@@ -194,6 +194,7 @@ export function App() {
 
   useEffect(() => {
     if (!game || game.phase !== "bust" || isRolling) return;
+    if (game.mode === "multiplayer") return;
     const timer = window.setTimeout(() => {
       setGame((current) => current && reduceGame(current, { type: "finishBust", playerId: current.activePlayer }));
     }, 1400);

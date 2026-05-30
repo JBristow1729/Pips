@@ -53,7 +53,7 @@ wss.on("connection", (socket) => {
         if (!latest || latest.state.phase !== "bust" || latest.state.activePlayer !== bustedPlayer) return;
         latest.state = reduceGame(latest.state, { type: "finishBust", playerId: bustedPlayer });
         broadcast(latest, { type: "state", state: latest.state });
-      }, 2700);
+      }, 4200);
     }
   });
 

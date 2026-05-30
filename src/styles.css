@@ -508,7 +508,7 @@ h1 {
 .dialog {
   width: min(460px, calc(100vw - 32px));
   min-height: 260px;
-  padding: 62px 66px 50px;
+  padding: 100px 66px 50px;
   border: 0;
   border-radius: 0;
   background: url("/assets/Notice.png") center / 100% 100% no-repeat;
@@ -520,7 +520,7 @@ h1 {
   display: flex;
   justify-content: center;
   gap: 12px;
-  margin-top: 18px;
+  margin-top: 22px;
 }
 
 .rules-dialog {
@@ -862,7 +862,7 @@ h1 {
   .dialog {
     width: min(360px, calc(100vw - 20px));
     min-height: 218px;
-    padding: 48px 48px 38px;
+    padding: 78px 48px 38px;
   }
 
   .dialog h2 {
