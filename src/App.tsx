@@ -7,10 +7,15 @@ import { playRoll, playTap, setMuted } from "./audio/sounds";
 import { chooseAiDice, shouldAiBank } from "./game/ai";
 import { createGame, reduceGame } from "./game/gameState";
 import { BET_GOALS, type GameState, type Mode, type PlayerId } from "./game/types";
+import type { Die, DieValue } from "./game/types";
 import { connectMultiplayer, type MultiplayerConnection } from "./multiplayer/client";
-import { changeWallet, readWallet, writeWallet } from "./storage/wallet";
+import { changeWallet, readWallet } from "./storage/wallet";
 
 type Screen = "main" | "bet" | "matchmaking" | "game";
+type RollVisual = {
+  dice: Die[];
+  faces: DieValue[];
+};
 
 const foundPhrases = [
   "On the tavern floor!",
@@ -18,6 +23,15 @@ const foundPhrases = [
   "In someone else's trouser pocket!",
   "At the bottom of your tankard!",
   "Under a suspiciously sticky table!"
+];
+
+const rollAnimationChains: DieValue[][] = [
+  [5, 1, 5, 3, 2, 6, 4, 2, 3, 1],
+  [6, 2, 4, 3, 6, 1, 5, 4, 3, 1],
+  [2, 3, 1, 4, 5, 1, 4, 1, 6, 3],
+  [4, 6, 2, 5, 3, 1, 6, 2, 5, 4],
+  [1, 3, 6, 5, 2, 4, 1, 6, 3, 5],
+  [3, 5, 2, 6, 1, 4, 5, 2, 6, 1]
 ];
 
 function GoldDisplay({ gold }: { gold: number }) {
@@ -40,16 +54,20 @@ export function App() {
   const [foundGold, setFoundGold] = useState<string | null>(null);
   const [muted, setMutedState] = useState(false);
   const [isRolling, setIsRolling] = useState(false);
+  const [rollVisual, setRollVisual] = useState<RollVisual | null>(null);
   const [multiplayerError, setMultiplayerError] = useState("");
   const connectionRef = useRef<MultiplayerConnection | null>(null);
   const resolvedGameRef = useRef(false);
   const playerIdRef = useRef<PlayerId>("p1");
+  const aiTimersRef = useRef<number[]>([]);
+  const aiBusyRef = useRef(false);
   const goal = BET_GOALS[bet];
   const canAfford = gold >= bet;
   const isMultiplayer = mode === "multiplayer";
   const isMyTurn = game?.activePlayer === playerId;
   const controlsEnabled = Boolean(game && game.phase !== "gameOver" && !isRolling && (!isMultiplayer || isMyTurn));
   const selectedScoreValid = Boolean(game && game.players[game.activePlayer].current > 0);
+  const animationTimersRef = useRef<number[]>([]);
 
   useEffect(() => {
     if (screen === "main" && gold === 0 && !foundGold) {
@@ -69,20 +87,37 @@ export function App() {
   }, [playerId]);
 
   useEffect(() => {
-    if (!game || game.mode !== "singleplayer" || game.phase === "gameOver" || game.activePlayer !== "p2") return;
-    const timers: number[] = [];
+    return () => {
+      clearAnimationTimers();
+      clearAiTimers();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!game || isRolling || game.mode !== "singleplayer" || game.phase === "gameOver" || game.activePlayer !== "p2") {
+      clearAiTimers();
+      aiBusyRef.current = false;
+      return;
+    }
+    if (aiBusyRef.current) return;
     const sendAi = (delay: number, fn: () => void) => {
-      timers.push(window.setTimeout(fn, delay));
+      aiTimersRef.current.push(window.setTimeout(fn, delay));
     };
 
     if (game.phase === "ready") {
+      aiBusyRef.current = true;
       sendAi(700, () => {
-        triggerRollSound();
-        setGame((current) => current && reduceGame(current, { type: "roll", playerId: "p2" }));
+        setGame((current) => {
+          if (!current) return current;
+          animateToState(reduceGame(current, { type: "roll", playerId: "p2" }));
+          return current;
+        });
+        aiBusyRef.current = false;
       });
     }
 
     if (game.phase === "selecting" && game.players.p2.current === 0) {
+      aiBusyRef.current = true;
       const choices = chooseAiDice(game);
       const used = new Set<string>();
       let delay = 450;
@@ -102,11 +137,18 @@ export function App() {
           if (!current) return current;
           return reduceGame(current, { type: shouldAiBank(current) ? "bank" : "hold", playerId: "p2" });
         });
+        aiBusyRef.current = false;
       });
     }
+  }, [game, isRolling]);
 
-    return () => timers.forEach(window.clearTimeout);
-  }, [game]);
+  useEffect(() => {
+    if (!game || game.phase !== "bust" || isRolling) return;
+    const timer = window.setTimeout(() => {
+      setGame((current) => current && reduceGame(current, { type: "finishBust", playerId: current.activePlayer }));
+    }, 1400);
+    return () => window.clearTimeout(timer);
+  }, [game, isRolling]);
 
   useEffect(() => {
     if (!game || game.phase !== "gameOver" || resolvedGameRef.current) return;
@@ -138,7 +180,16 @@ export function App() {
           setGame(localizeNames(message.state, message.playerId));
           setScreen("game");
         }
-        if (message.type === "state") setGame(localizeNames(message.state, playerIdRef.current));
+        if (message.type === "state") {
+          const localized = localizeNames(message.state, playerIdRef.current);
+          setGame((current) => {
+            if (shouldAnimateIncomingRoll(current, localized)) {
+              animateToState(localized);
+              return current;
+            }
+            return localized;
+          });
+        }
         if (message.type === "error") setMultiplayerError(message.message);
       },
       setMultiplayerError
@@ -149,17 +200,54 @@ export function App() {
     if (!game) return;
     if (game.mode === "multiplayer") {
       connectionRef.current?.send(dieId ? { type: "toggleDie", dieId } : { type });
-      if (type === "roll") triggerRollSound();
       return;
     }
-    if (type === "roll") triggerRollSound();
     setGame(reduceGame(game, dieId ? { type: "toggleDie", playerId, dieId } : { type, playerId }));
   };
 
-  const triggerRollSound = () => {
+  const roll = () => {
+    if (!game || game.phase !== "ready" || !controlsEnabled) return;
+    if (game.mode === "multiplayer") {
+      connectionRef.current?.send({ type: "roll" });
+      return;
+    }
+    animateToState(reduceGame(game, { type: "roll", playerId }));
+  };
+
+  const animateToState = (finalState: GameState) => {
+    clearAnimationTimers();
+    const chains = finalState.dice.map(() => rollAnimationChains[Math.floor(Math.random() * rollAnimationChains.length)]);
+    let frame = 0;
     setIsRolling(true);
+    setRollVisual({
+      dice: finalState.dice.map((die) => ({ ...die, selected: false })),
+      faces: chains.map((chain) => chain[0])
+    });
     playRoll();
-    window.setTimeout(() => setIsRolling(false), 1100);
+    const interval = window.setInterval(() => {
+      frame += 1;
+      setRollVisual({
+        dice: finalState.dice.map((die) => ({ ...die, selected: false })),
+        faces: chains.map((chain, index) => chain[(frame + index) % chain.length])
+      });
+    }, 95);
+    const done = window.setTimeout(() => {
+      window.clearInterval(interval);
+      setRollVisual(null);
+      setIsRolling(false);
+      setGame(finalState);
+    }, 1250);
+    animationTimersRef.current = [interval, done];
+  };
+
+  const clearAnimationTimers = () => {
+    animationTimersRef.current.forEach(window.clearTimeout);
+    animationTimersRef.current = [];
+  };
+
+  const clearAiTimers = () => {
+    aiTimersRef.current.forEach(window.clearTimeout);
+    aiTimersRef.current = [];
   };
 
   const leaveGame = () => {
@@ -173,6 +261,10 @@ export function App() {
     connectionRef.current?.close();
     connectionRef.current = null;
     setGame(null);
+    setRollVisual(null);
+    setIsRolling(false);
+    clearAiTimers();
+    aiBusyRef.current = false;
     setScreen("main");
     setGold(readWallet());
   };
@@ -240,6 +332,9 @@ export function App() {
     }
 
     if (game) {
+      const renderedDice = rollVisual
+        ? rollVisual.dice.map((die, index) => ({ ...die, value: rollVisual.faces[index] ?? die.value }))
+        : game.dice;
       return (
         <main className="game-screen">
           <GoldDisplay gold={gold} />
@@ -250,7 +345,7 @@ export function App() {
           </div>
           <div className={`center-message ${game.phase === "gameOver" ? "winner" : ""}`}>{game.message}</div>
           <div className="dice-tray">
-            {game.dice.map((die) => (
+            {renderedDice.map((die) => (
               <Dice
                 key={die.id}
                 die={die}
@@ -267,7 +362,7 @@ export function App() {
             <MenuButton onClick={returnMain}>Main Menu</MenuButton>
           ) : (
             <div className="game-actions">
-              <MenuButton disabled={!controlsEnabled || game.phase !== "ready"} onClick={() => sendAction("roll")}>
+              <MenuButton disabled={!controlsEnabled || game.phase !== "ready"} onClick={roll}>
                 Roll
               </MenuButton>
               <MenuButton disabled={!controlsEnabled || !selectedScoreValid} onClick={() => sendAction("hold")}>
@@ -286,7 +381,7 @@ export function App() {
     }
 
     return null;
-  }, [screen, gold, mode, bet, goal, canAfford, game, controlsEnabled, selectedScoreValid, multiplayerError, playerId, isRolling]);
+  }, [screen, gold, mode, bet, goal, canAfford, game, controlsEnabled, selectedScoreValid, multiplayerError, playerId, isRolling, rollVisual]);
 
   function selectMode(nextMode: Mode) {
     setMode(nextMode);
@@ -313,12 +408,32 @@ export function App() {
 
 function localizeNames(state: GameState, self: PlayerId): GameState {
   const opponent = self === "p1" ? "p2" : "p1";
+  const players = {
+    ...state.players,
+    [self]: { ...state.players[self], name: "You" },
+    [opponent]: { ...state.players[opponent], name: "Opponent" }
+  };
   return {
     ...state,
-    players: {
-      ...state.players,
-      [self]: { ...state.players[self], name: "You" },
-      [opponent]: { ...state.players[opponent], name: "Opponent" }
-    }
+    players,
+    message: localizeMessage(state, self)
   };
+}
+
+function shouldAnimateIncomingRoll(current: GameState | null, incoming: GameState) {
+  if (!current) return false;
+  const incomingIsRollResult = incoming.phase === "selecting" || incoming.phase === "bust";
+  return current.phase === "ready" && incomingIsRollResult && current.activePlayer === incoming.activePlayer;
+}
+
+function localizeMessage(state: GameState, self: PlayerId) {
+  const activeIsSelf = state.activePlayer === self;
+  if (state.phase === "ready") return activeIsSelf ? "Your turn" : "Opponent's turn";
+  if (state.phase === "selecting") return activeIsSelf ? "You rolled" : "Opponent rolled";
+  if (state.phase === "bust") return activeIsSelf ? "BUST" : "Opponent busted";
+  if (state.phase === "gameOver") {
+    if (state.winner === self) return "You win!";
+    if (state.winner) return "Opponent wins!";
+  }
+  return state.message;
 }

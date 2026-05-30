@@ -36,7 +36,8 @@ export type ClientAction =
   | { type: "toggleDie"; playerId: PlayerId; dieId: string }
   | { type: "hold"; playerId: PlayerId }
   | { type: "bank"; playerId: PlayerId }
-  | { type: "forfeit"; playerId: PlayerId };
+  | { type: "forfeit"; playerId: PlayerId }
+  | { type: "finishBust"; playerId: PlayerId };
 
 export const BET_GOALS: Record<number, number> = {
   0: 1500,

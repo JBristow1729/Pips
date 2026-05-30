@@ -46,6 +46,15 @@ wss.on("connection", (socket) => {
     if (!action) return;
     room.state = reduceGame(room.state, action);
     broadcast(room, { type: "state", state: room.state });
+    if (action.type === "roll" && room.state.phase === "bust") {
+      const bustedPlayer = room.state.activePlayer;
+      setTimeout(() => {
+        const latest = rooms.get(room.id);
+        if (!latest || latest.state.phase !== "bust" || latest.state.activePlayer !== bustedPlayer) return;
+        latest.state = reduceGame(latest.state, { type: "finishBust", playerId: bustedPlayer });
+        broadcast(latest, { type: "state", state: latest.state });
+      }, 2700);
+    }
   });
 
   socket.on("close", () => {

@@ -9,6 +9,14 @@ export function otherPlayer(playerId: PlayerId): PlayerId {
   return playerId === "p1" ? "p2" : "p1";
 }
 
+function turnMessage(name: string) {
+  return name === "You" ? "Your turn" : `${name}'s turn`;
+}
+
+function keepsRollingMessage(name: string) {
+  return name === "You" ? "You keep rolling" : `${name} keeps rolling`;
+}
+
 export function createDice(count: number, values?: DieValue[]): Die[] {
   return Array.from({ length: count }, (_, index) => ({
     id: `${Date.now()}-${index}-${Math.random().toString(36).slice(2)}`,
@@ -24,7 +32,7 @@ export function createGame(mode: Mode, bet: number, goal: number, names = ["You"
     goal,
     activePlayer: "p1",
     phase: "ready",
-    message: `${names[0]}'s turn`,
+    message: turnMessage(names[0]),
     dice: createDice(6, [1, 1, 1, 5, 2, 3]),
     players: {
       p1: { id: "p1", name: names[0], total: 0, held: 0, current: 0 },
@@ -54,12 +62,13 @@ function updateCurrent(state: GameState): GameState {
 
 function passTurn(state: GameState, message?: string): GameState {
   const next = otherPlayer(state.activePlayer);
+  const defaultMessage = turnMessage(state.players[next].name);
   return {
     ...state,
     activePlayer: next,
     dice: createDice(6),
     phase: "ready",
-    message: message ?? `${state.players[next].name}'s turn`,
+    message: message ?? defaultMessage,
     players: {
       ...state.players,
       [state.activePlayer]: { ...state.players[state.activePlayer], held: 0, current: 0 }
@@ -72,10 +81,10 @@ export function reduceGame(state: GameState, action: ClientAction, forcedRoll?: 
   if (action.playerId !== state.activePlayer && action.type !== "forfeit") return state;
 
   if (action.type === "roll") {
-    if (state.phase !== "ready" && state.phase !== "selecting") return state;
+    if (state.phase !== "ready") return state;
     const dice = createDice(state.dice.length || 6, forcedRoll);
     if (!rollHasScoreableDice(dice.map((die) => die.value))) {
-      const busted = {
+      return {
         ...state,
         dice,
         phase: "bust" as const,
@@ -85,7 +94,6 @@ export function reduceGame(state: GameState, action: ClientAction, forcedRoll?: 
           [state.activePlayer]: { ...state.players[state.activePlayer], held: 0, current: 0 }
         }
       };
-      return passTurn(busted, `BUST - ${state.players[otherPlayer(state.activePlayer)].name}'s turn`);
     }
     return {
       ...state,
@@ -93,6 +101,11 @@ export function reduceGame(state: GameState, action: ClientAction, forcedRoll?: 
       phase: "selecting",
       message: `${state.players[state.activePlayer].name} rolled`
     };
+  }
+
+  if (action.type === "finishBust") {
+    if (state.phase !== "bust") return state;
+    return passTurn(state);
   }
 
   if (action.type === "toggleDie") {
@@ -111,7 +124,7 @@ export function reduceGame(state: GameState, action: ClientAction, forcedRoll?: 
       ...state,
       dice: nextDice,
       phase: "ready",
-      message: `${state.players[state.activePlayer].name} keeps rolling`,
+      message: keepsRollingMessage(state.players[state.activePlayer].name),
       players: {
         ...state.players,
         [state.activePlayer]: {
