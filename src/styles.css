@@ -103,6 +103,10 @@ h1 {
   z-index: 3;
 }
 
+.game-screen .gold-display {
+  top: 82px;
+}
+
 .coin {
   position: absolute;
   left: 0;
@@ -170,15 +174,15 @@ h1 {
 
 .rules-button {
   position: fixed;
-  left: 42px;
-  top: 38px;
+  left: 72px;
+  top: 64px;
   z-index: 6;
 }
 
 .back-button {
   position: fixed;
-  left: 42px;
-  bottom: 38px;
+  left: 72px;
+  bottom: 64px;
   z-index: 5;
 }
 
@@ -199,33 +203,34 @@ h1 {
 .wait-panel {
   position: absolute;
   left: 130px;
-  top: 392px;
+  top: min(360px, 38vh);
   margin-top: 0;
-  width: min(500px, calc(100vw - 84px));
-  padding: 24px;
+  width: min(470px, calc(100vw - 84px));
   border: 0;
   background: url("/assets/ScoreBoard.png") center / 100% 100% no-repeat;
-  padding: 42px 54px;
+  padding: 46px 62px 56px;
   box-shadow: none;
+  text-align: center;
+  min-height: 382px;
 }
 
 .bet-panel h2,
 .wait-panel h2,
 .dialog h2 {
-  margin: 0 0 12px;
+  margin: 0 0 8px;
   font-family: MedievalSharp, Georgia, serif;
-  font-size: 2.1rem;
+  font-size: 1.95rem;
 }
 
 .bet-slider-wrap {
   width: min(360px, 100%);
-  margin: 12px 0 36px;
+  margin: 12px auto 42px;
 }
 
 .bet-slider-wrap label {
   display: block;
-  margin-bottom: 16px;
-  font-size: clamp(2.2rem, 4vw, 3.1rem);
+  margin-bottom: 10px;
+  font-size: clamp(1.9rem, 3.5vw, 2.65rem);
 }
 
 .bet-slider-shell {
@@ -237,7 +242,7 @@ h1 {
   width: 100%;
   appearance: none;
   -webkit-appearance: none;
-  height: 20px;
+  height: 8px;
   border-radius: 999px;
   background: #ffc15f;
   outline: 0;
@@ -247,30 +252,47 @@ h1 {
 .bet-slider::-webkit-slider-thumb {
   appearance: none;
   -webkit-appearance: none;
-  width: 54px;
-  height: 54px;
-  border: 8px solid #ffc15f;
+  width: 32px;
+  height: 32px;
+  border: 5px solid #ffc15f;
   border-radius: 50%;
-  background: #6a3b1e;
+  background:
+    radial-gradient(circle at 34% 28%, #a6632b, #5a2d13 68%),
+    url("/assets/ButtonStandard.png") center / cover no-repeat;
   cursor: pointer;
 }
 
 .bet-slider::-moz-range-thumb {
-  width: 38px;
-  height: 38px;
-  border: 8px solid #ffc15f;
+  width: 22px;
+  height: 22px;
+  border: 5px solid #ffc15f;
   border-radius: 50%;
-  background: #6a3b1e;
+  background:
+    radial-gradient(circle at 34% 28%, #a6632b, #5a2d13 68%),
+    url("/assets/ButtonStandard.png") center / cover no-repeat;
   cursor: pointer;
 }
 
 .bet-bubble {
   position: absolute;
-  top: 46px;
+  top: 26px;
   transform: translateX(-50%);
   min-width: 58px;
   text-align: center;
-  font-size: 1.65rem;
+  font-size: 1.48rem;
+}
+
+.bet-panel .goal-plaque {
+  position: absolute;
+  left: 62px;
+  bottom: 58px;
+  margin: 0;
+}
+
+.bet-panel .button {
+  position: absolute;
+  right: 62px;
+  bottom: 52px;
 }
 
 .goal-plaque,
@@ -280,7 +302,7 @@ h1 {
   justify-content: center;
   min-height: 54px;
   padding: 10px 18px;
-  border: 2px solid #e3bd75;
+  border: 0;
   border-radius: 0;
   background: url("/assets/ScoreBoard.png") center / 100% 100% no-repeat;
   font-weight: 800;
@@ -297,6 +319,7 @@ h1 {
   grid-template-columns: minmax(260px, 360px) 1fr minmax(260px, 360px);
   align-items: center;
   gap: 12px;
+  pointer-events: none;
 }
 
 .goal-board {
@@ -306,6 +329,7 @@ h1 {
   transform: translateY(-46px);
   min-width: 300px;
   font-size: 2.5rem;
+  pointer-events: auto;
 }
 
 .scoreboard {
@@ -316,6 +340,7 @@ h1 {
   color: #ffeac0;
   min-height: 260px;
   font-size: 2rem;
+  pointer-events: auto;
 }
 
 .scoreboard.active {
@@ -330,8 +355,24 @@ h1 {
   text-align: center;
 }
 
-.scoreboard p {
-  margin: 9px 0;
+.score-lines {
+  display: grid;
+  gap: 8px;
+}
+
+.score-line {
+  display: grid;
+  grid-template-columns: 1fr minmax(72px, auto);
+  align-items: baseline;
+  column-gap: 48px;
+}
+
+.score-line span {
+  text-align: left;
+}
+
+.score-line strong {
+  text-align: right;
 }
 
 .center-message {
@@ -351,14 +392,16 @@ h1 {
 }
 
 .dice-tray {
+  --die-size: clamp(58px, 8vw, 82px);
   width: min(720px, calc(100vw - 80px));
   min-height: clamp(260px, 42vh, 500px);
   display: grid;
-  grid-template-columns: repeat(3, max-content);
+  grid-template-columns: repeat(6, calc(var(--die-size) / 2));
   justify-content: center;
   align-items: center;
   align-content: center;
-  gap: 22px;
+  column-gap: 0;
+  row-gap: 22px;
   margin: 16px 0 24px;
   padding: 24px;
   border: 16px solid rgba(45, 31, 17, 0.95);
@@ -369,36 +412,31 @@ h1 {
     linear-gradient(90deg, #9e745e, #c69b88 55%, #a57561);
 }
 
-.dice-count-1,
-.dice-count-2,
-.dice-count-3 {
-  grid-template-columns: repeat(var(--dice-count), max-content);
-}
-
-.dice-count-1 {
-  --dice-count: 1;
-}
-
-.dice-count-2 {
-  --dice-count: 2;
-}
-
-.dice-count-3 {
-  --dice-count: 3;
-}
-
-.dice-count-4 {
-  grid-template-columns: repeat(2, max-content);
-}
-
-.dice-count-5,
-.dice-count-6 {
-  grid-template-columns: repeat(3, max-content);
-}
+.dice-count-1 .die:nth-child(1) { grid-column: 3 / span 2; }
+.dice-count-2 .die:nth-child(1) { grid-column: 2 / span 2; }
+.dice-count-2 .die:nth-child(2) { grid-column: 4 / span 2; }
+.dice-count-3 .die:nth-child(1) { grid-column: 1 / span 2; }
+.dice-count-3 .die:nth-child(2) { grid-column: 3 / span 2; }
+.dice-count-3 .die:nth-child(3) { grid-column: 5 / span 2; }
+.dice-count-4 .die:nth-child(1) { grid-column: 2 / span 2; }
+.dice-count-4 .die:nth-child(2) { grid-column: 4 / span 2; }
+.dice-count-4 .die:nth-child(3) { grid-column: 2 / span 2; }
+.dice-count-4 .die:nth-child(4) { grid-column: 4 / span 2; }
+.dice-count-5 .die:nth-child(1),
+.dice-count-6 .die:nth-child(1) { grid-column: 1 / span 2; }
+.dice-count-5 .die:nth-child(2),
+.dice-count-6 .die:nth-child(2) { grid-column: 3 / span 2; }
+.dice-count-5 .die:nth-child(3),
+.dice-count-6 .die:nth-child(3) { grid-column: 5 / span 2; }
+.dice-count-5 .die:nth-child(4) { grid-column: 2 / span 2; }
+.dice-count-5 .die:nth-child(5) { grid-column: 4 / span 2; }
+.dice-count-6 .die:nth-child(4) { grid-column: 1 / span 2; }
+.dice-count-6 .die:nth-child(5) { grid-column: 3 / span 2; }
+.dice-count-6 .die:nth-child(6) { grid-column: 5 / span 2; }
 
 .die {
-  width: clamp(58px, 8vw, 82px);
-  height: clamp(58px, 8vw, 82px);
+  width: var(--die-size);
+  height: var(--die-size);
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   grid-template-rows: repeat(3, 1fr);
@@ -536,6 +574,120 @@ h1 {
   }
 }
 
+@media (min-width: 761px) and (max-width: 1500px) {
+  h1 {
+    margin: 58px 0 0 92px;
+    font-size: clamp(4.8rem, 9vw, 7.2rem);
+  }
+
+  .gold-display {
+    top: 104px;
+    right: 126px;
+  }
+
+  .game-screen .gold-display {
+    top: 70px;
+    right: 128px;
+  }
+
+  .main-actions {
+    left: 132px;
+    bottom: 122px;
+    width: min(340px, 80vw);
+  }
+
+  .rules-button {
+    left: 56px;
+    top: 50px;
+  }
+
+  .back-button {
+    left: 56px;
+    bottom: 50px;
+  }
+
+  .button {
+    min-height: 54px;
+    min-width: 132px;
+    padding: 13px 30px 18px;
+    font-size: 1.22rem;
+  }
+
+  .button-small {
+    min-height: 44px;
+    min-width: 102px;
+    padding: 9px 21px 13px;
+    font-size: 1rem;
+  }
+
+  .bet-panel,
+  .wait-panel {
+    left: 100px;
+    top: min(310px, 36vh);
+    width: min(430px, calc(100vw - 84px));
+    min-height: 340px;
+    padding: 40px 54px 52px;
+  }
+
+  .bet-panel h2,
+  .wait-panel h2 {
+    font-size: 1.75rem;
+  }
+
+  .bet-slider-wrap label {
+    font-size: 2.1rem;
+  }
+
+  .bet-panel .goal-plaque {
+    left: 54px;
+    bottom: 50px;
+  }
+
+  .bet-panel .button {
+    right: 54px;
+    bottom: 45px;
+  }
+
+  .score-row {
+    top: 132px;
+    left: 70px;
+    right: 70px;
+    grid-template-columns: minmax(210px, 300px) 1fr minmax(210px, 300px);
+  }
+
+  .scoreboard {
+    min-height: 218px;
+    padding: 34px 42px 36px;
+    font-size: 1.5rem;
+  }
+
+  .scoreboard h2 {
+    font-size: 2.55rem;
+  }
+
+  .score-line {
+    column-gap: 30px;
+  }
+
+  .goal-board {
+    min-width: 238px;
+    font-size: 2rem;
+    transform: translateY(-34px);
+  }
+
+  .center-message {
+    margin-top: 98px;
+    font-size: clamp(2.4rem, 4vw, 3.35rem);
+  }
+
+  .dice-tray {
+    --die-size: clamp(58px, 6vw, 76px);
+    width: min(650px, calc(100vw - 80px));
+    min-height: clamp(230px, 39vh, 390px);
+    row-gap: 18px;
+  }
+}
+
 @media (max-width: 760px) {
   body {
     overflow: hidden;
@@ -557,6 +709,10 @@ h1 {
     min-height: 40px;
     padding-left: 42px;
     font-size: 1.22rem;
+  }
+
+  .game-screen .gold-display {
+    top: 12px;
   }
 
   .coin {
@@ -592,13 +748,13 @@ h1 {
   }
 
   .rules-button {
-    top: 12px;
-    left: 12px;
+    top: 20px;
+    left: 20px;
   }
 
   .back-button {
-    left: 12px;
-    bottom: 12px;
+    left: 20px;
+    bottom: 20px;
   }
 
   .mute-toggle {
@@ -616,7 +772,8 @@ h1 {
     transform: translateX(-50%);
     width: min(430px, calc(100vw - 22px));
     margin-top: 24px;
-    padding: 38px 40px 34px;
+    padding: 44px 46px 48px;
+    min-height: 360px;
   }
 
   .score-row {
@@ -640,7 +797,13 @@ h1 {
     margin-bottom: 2px;
   }
 
-  .scoreboard p {
+  .score-lines {
+    gap: 1px;
+  }
+
+  .score-line {
+    grid-template-columns: 1fr minmax(24px, auto);
+    column-gap: 14px;
     font-size: clamp(0.72rem, 3.4vw, 0.86rem);
     margin: 1px 0;
   }
@@ -661,7 +824,7 @@ h1 {
   }
 
   .bet-slider-wrap {
-    margin-bottom: 28px;
+    margin-bottom: 34px;
   }
 
   .bet-slider-wrap label {
@@ -674,32 +837,16 @@ h1 {
   }
 
   .dice-tray {
+    --die-size: clamp(44px, 14vw, 58px);
     width: calc(100vw - 24px);
     min-height: 132px;
     margin: 6px 0 10px;
     padding: 10px;
-    gap: 8px;
+    row-gap: 8px;
     border-width: 4px;
   }
 
-  .dice-count-1,
-  .dice-count-2,
-  .dice-count-3 {
-    grid-template-columns: repeat(var(--dice-count), max-content);
-  }
-
-  .dice-count-4 {
-    grid-template-columns: repeat(2, max-content);
-  }
-
-  .dice-count-5,
-  .dice-count-6 {
-    grid-template-columns: repeat(3, max-content);
-  }
-
   .die {
-    width: clamp(44px, 14vw, 58px);
-    height: clamp(44px, 14vw, 58px);
     padding: 9px;
   }
 

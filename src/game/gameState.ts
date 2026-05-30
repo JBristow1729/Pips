@@ -17,6 +17,10 @@ function keepsRollingMessage(name: string) {
   return name === "You" ? "You keep rolling" : `${name} keeps rolling`;
 }
 
+function winMessage(name: string) {
+  return name === "You" ? "You win!" : `${name} wins!`;
+}
+
 export function createDice(count: number, values?: DieValue[]): Die[] {
   return Array.from({ length: count }, (_, index) => ({
     id: `${Date.now()}-${index}-${Math.random().toString(36).slice(2)}`,
@@ -155,7 +159,7 @@ export function reduceGame(state: GameState, action: ClientAction, forcedRoll?: 
         players,
         phase: "gameOver",
         winner: state.activePlayer,
-        message: `${state.players[state.activePlayer].name} wins!`
+        message: winMessage(state.players[state.activePlayer].name)
       };
     }
     return passTurn({ ...state, players }, `${state.players[otherPlayer(state.activePlayer)].name}'s turn`);

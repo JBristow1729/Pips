@@ -6,12 +6,23 @@ type Props = {
 };
 
 export function Scoreboard({ player, active }: Props) {
+  const rows = [
+    ["Total", player.total],
+    ["Held", player.held],
+    ["Current", player.current]
+  ] as const;
+
   return (
     <section className={`scoreboard ${active ? "active" : ""}`}>
       <h2>{player.name}</h2>
-      <p>Total: {player.total}</p>
-      <p>Held: {player.held}</p>
-      <p>Current: {player.current}</p>
+      <div className="score-lines">
+        {rows.map(([label, value]) => (
+          <div className="score-line" key={label}>
+            <span>{label}</span>
+            <strong>{value}</strong>
+          </div>
+        ))}
+      </div>
     </section>
   );
 }

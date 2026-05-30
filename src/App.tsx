@@ -358,7 +358,7 @@ export function App() {
                   value={bet}
                   onChange={(event) => setBet(Number(event.currentTarget.value))}
                 />
-                <output className="bet-bubble" style={{ left: `${(bet / 30) * 100}%` }}>
+                <output className="bet-bubble" style={getBetBubbleStyle(bet)}>
                   {bet}g
                 </output>
               </div>
@@ -501,4 +501,9 @@ function localizeMessage(state: GameState, self: PlayerId) {
     if (state.winner) return "Opponent wins!";
   }
   return state.message;
+}
+
+function getBetBubbleStyle(bet: number) {
+  const ratio = bet / 30;
+  return { left: `calc(16px + ${ratio * 100}% - ${ratio * 32}px)` };
 }
