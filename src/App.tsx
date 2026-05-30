@@ -43,6 +43,55 @@ function GoldDisplay({ gold }: { gold: number }) {
   );
 }
 
+function RuleDice({ values }: { values: DieValue[] }) {
+  return (
+    <div className="rule-dice">
+      {values.map((value, index) => (
+        <Dice
+          key={`${value}-${index}`}
+          die={{ id: `${value}-${index}`, value, selected: false }}
+          disabled
+          rolling={false}
+          compact
+          onClick={() => undefined}
+        />
+      ))}
+    </div>
+  );
+}
+
+function RulesDialog({ onClose }: { onClose: () => void }) {
+  const rows: Array<{ dice: DieValue[]; name: string; score: string }> = [
+    { dice: [1], name: "One", score: "100" },
+    { dice: [5], name: "Five", score: "50" },
+    { dice: [3, 3, 3], name: "3 of a Kind", score: "100 x dice value" },
+    { dice: [3, 3, 3, 3], name: "4 of a Kind", score: "200 x dice value" },
+    { dice: [3, 3, 3, 3, 3], name: "5 of a Kind", score: "400 x dice value" },
+    { dice: [3, 3, 3, 3, 3, 3], name: "6 of a Kind", score: "800 x dice value" },
+    { dice: [1, 2, 3, 4, 5], name: "Low Straight", score: "500" },
+    { dice: [2, 3, 4, 5, 6], name: "High Straight", score: "750" },
+    { dice: [1, 2, 3, 4, 5, 6], name: "Full Straight", score: "1500" }
+  ];
+
+  return (
+    <div className="dialog-backdrop">
+      <section className="rules-dialog" role="dialog" aria-modal="true" aria-labelledby="rules-title">
+        <h2 id="rules-title">Rules</h2>
+        <div className="rules-list">
+          {rows.map((row) => (
+            <div className="rule-row" key={`${row.name}-${row.score}`}>
+              <RuleDice values={row.dice} />
+              <span>{row.name}</span>
+              <strong>{row.score}</strong>
+            </div>
+          ))}
+        </div>
+        <MenuButton onClick={onClose}>Close</MenuButton>
+      </section>
+    </div>
+  );
+}
+
 export function App() {
   const [screen, setScreen] = useState<Screen>("main");
   const [mode, setMode] = useState<Mode>("singleplayer");
@@ -51,6 +100,7 @@ export function App() {
   const [game, setGame] = useState<GameState | null>(null);
   const [playerId, setPlayerId] = useState<PlayerId>("p1");
   const [leaveDialog, setLeaveDialog] = useState(false);
+  const [rulesOpen, setRulesOpen] = useState(false);
   const [foundGold, setFoundGold] = useState<string | null>(null);
   const [muted, setMutedState] = useState(false);
   const [isRolling, setIsRolling] = useState(false);
@@ -295,12 +345,23 @@ export function App() {
           <section className="bet-panel">
             <h2>Select your bet</h2>
             <p>{mode === "singleplayer" ? "Click Play to start Singleplayer" : "Click Play to enter Multiplayer matchmaking"}</p>
-            <div className="bet-options">
-              {[0, 10, 20, 30].map((amount) => (
-                <button key={amount} className={`bet-option ${bet === amount ? "selected" : ""}`} onClick={() => setBet(amount)}>
-                  {amount}g
-                </button>
-              ))}
+            <div className="bet-slider-wrap">
+              <label htmlFor="bet-slider">Select Bet</label>
+              <div className="bet-slider-shell">
+                <input
+                  id="bet-slider"
+                  className="bet-slider"
+                  type="range"
+                  min="0"
+                  max="30"
+                  step="10"
+                  value={bet}
+                  onChange={(event) => setBet(Number(event.currentTarget.value))}
+                />
+                <output className="bet-bubble" style={{ left: `${(bet / 30) * 100}%` }}>
+                  {bet}g
+                </output>
+              </div>
             </div>
             <div className="goal-plaque">Goal: {goal}</div>
             <MenuButton disabled={!canAfford} onClick={mode === "singleplayer" ? startSingleplayer : startMultiplayer}>
@@ -337,6 +398,9 @@ export function App() {
         : game.dice;
       return (
         <main className="game-screen">
+          <MenuButton variant="small" className="rules-button" onClick={() => setRulesOpen(true)}>
+            Rules
+          </MenuButton>
           <GoldDisplay gold={gold} />
           <div className="score-row">
             <Scoreboard player={game.players.p1} active={game.activePlayer === "p1"} />
@@ -344,7 +408,7 @@ export function App() {
             <Scoreboard player={game.players.p2} active={game.activePlayer === "p2"} />
           </div>
           <div className={`center-message ${game.phase === "gameOver" ? "winner" : ""}`}>{game.message}</div>
-          <div className="dice-tray">
+          <div className={`dice-tray dice-count-${renderedDice.length}`}>
             {renderedDice.map((die) => (
               <Dice
                 key={die.id}
@@ -402,6 +466,7 @@ export function App() {
       {leaveDialog && (
         <Dialog title="Are you sure you want to leave and forfeit your bet?" onYes={leaveGame} onNo={() => setLeaveDialog(false)} />
       )}
+      {rulesOpen && <RulesDialog onClose={() => setRulesOpen(false)} />}
     </div>
   );
 }

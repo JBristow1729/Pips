@@ -13,14 +13,15 @@ type Props = {
   die: Die;
   disabled: boolean;
   rolling: boolean;
+  compact?: boolean;
   onClick: () => void;
 };
 
-export function Dice({ die, disabled, rolling, onClick }: Props) {
+export function Dice({ die, disabled, rolling, compact = false, onClick }: Props) {
   const pips = pipMap[die.value];
   return (
     <button
-      className={`die ${die.selected ? "selected" : ""} ${rolling ? "rolling" : ""}`}
+      className={`die ${compact ? "die-compact" : ""} ${die.selected ? "selected" : ""} ${rolling ? "rolling" : ""}`}
       disabled={disabled}
       onClick={onClick}
       aria-label={`Die ${die.value}${die.selected ? " selected" : ""}`}
