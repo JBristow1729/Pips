@@ -14,11 +14,22 @@ import { createRandomCustomization, readCustomizationInventory, writeCustomizati
 import { changeWallet, readWallet } from "./storage/wallet";
 
 type Screen = "main" | "bet" | "matchmaking" | "game";
+type RollMotion = {
+  axisX: string;
+  axisY: string;
+  axisZ: string;
+  turns: string;
+  duration: string;
+};
 type RollVisual = {
   dice: Die[];
-  faces: DieValue[];
+  motions: RollMotion[];
+  stopped: boolean[];
 };
 type RematchDialog = "waiting" | "challenge" | "cancelled" | null;
+
+const rollBaseDuration = 1.1;
+const rollStopStagger = 0.2;
 
 const foundPhrases = [
   "On the tavern floor!",
@@ -26,15 +37,6 @@ const foundPhrases = [
   "In someone else's trouser pocket!",
   "At the bottom of your tankard!",
   "Under a suspiciously sticky table!"
-];
-
-const rollAnimationChains: DieValue[][] = [
-  [5, 1, 5, 3, 2, 6, 4, 2, 3, 1],
-  [6, 2, 4, 3, 6, 1, 5, 4, 3, 1],
-  [2, 3, 1, 4, 5, 1, 4, 1, 6, 3],
-  [4, 6, 2, 5, 3, 1, 6, 2, 5, 4],
-  [1, 3, 6, 5, 2, 4, 1, 6, 3, 5],
-  [3, 5, 2, 6, 1, 4, 5, 2, 6, 1]
 ];
 
 function GoldDisplay({ gold }: { gold: number }) {
@@ -347,28 +349,30 @@ export function App() {
 
   const animateToState = (finalState: GameState) => {
     clearAnimationTimers();
-    const chains = finalState.dice.map(() => rollAnimationChains[Math.floor(Math.random() * rollAnimationChains.length)]);
-    let frame = 0;
+    const motions = finalState.dice.map((_, index) => createRollMotion(index));
     setIsRolling(true);
     setRollVisual({
       dice: finalState.dice.map((die) => ({ ...die, selected: false })),
-      faces: chains.map((chain) => chain[0])
+      motions,
+      stopped: finalState.dice.map(() => false)
     });
     playRoll();
-    const interval = window.setInterval(() => {
-      frame += 1;
-      setRollVisual({
-        dice: finalState.dice.map((die) => ({ ...die, selected: false })),
-        faces: chains.map((chain, index) => chain[(frame + index) % chain.length])
-      });
-    }, 95);
+    const stopTimers = finalState.dice.map((_, index) =>
+      window.setTimeout(() => {
+        setRollVisual((current) => {
+          if (!current) return current;
+          const stopped = [...current.stopped];
+          stopped[index] = true;
+          return { ...current, stopped };
+        });
+      }, rollStopMs(index))
+    );
     const done = window.setTimeout(() => {
-      window.clearInterval(interval);
       setRollVisual(null);
       setIsRolling(false);
       setGame(finalState);
-    }, 1250);
-    animationTimersRef.current = [interval, done];
+    }, rollCompleteMs(finalState.dice.length));
+    animationTimersRef.current = [...stopTimers, done];
   };
 
   const clearAnimationTimers = () => {
@@ -528,9 +532,7 @@ export function App() {
     }
 
     if (game) {
-      const renderedDice = rollVisual
-        ? rollVisual.dice.map((die, index) => ({ ...die, value: rollVisual.faces[index] ?? die.value }))
-        : game.dice;
+      const renderedDice = rollVisual ? rollVisual.dice : game.dice;
       return (
         <main className="game-screen">
           <header className="game-topbar">
@@ -556,12 +558,13 @@ export function App() {
                   {game.message}
                 </div>
               </div>
-              <div className={`dice-tray dice-count-${renderedDice.length}`} aria-label="Dice tray">
-                {renderedDice.map((die) => (
+              <div className={`dice-tray dice-count-${renderedDice.length} ${isRolling ? "dice-tray-rolling" : ""}`} aria-label="Dice tray">
+                {renderedDice.map((die, index) => (
                   <Dice
                     key={die.id}
                     die={die}
-                    rolling={isRolling}
+                    rolling={Boolean(isRolling && !rollVisual?.stopped[index])}
+                    rollMotion={rollVisual?.motions[index]}
                     disabled={!controlsEnabled || game.phase !== "selecting"}
                     customization={game.players[game.activePlayer].diceCustomization}
                     onClick={() => {
@@ -694,4 +697,50 @@ function formatWaitingCount(count: number) {
   if (count === 0) return "No players awaiting match";
   if (count === 1) return "1 Player awaiting match";
   return `${count} Players awaiting match`;
+}
+
+function createRollMotion(index: number): RollMotion {
+  const axis = randomRollAxis();
+  const direction = Math.random() < 0.5 ? -1 : 1;
+  const rotations = 3 + Math.floor(Math.random() * 3);
+  const wobble = Math.floor(Math.random() * 120) - 60;
+  const turns = direction * (rotations * 360 + wobble);
+  return {
+    axisX: axis.x.toFixed(2),
+    axisY: axis.y.toFixed(2),
+    axisZ: axis.z.toFixed(2),
+    turns: `${turns}deg`,
+    duration: `${rollDurationSeconds(index).toFixed(1)}s`
+  };
+}
+
+function randomRollAxis() {
+  const raw = {
+    x: randomAxisComponent(),
+    y: randomAxisComponent(),
+    z: randomAxisComponent()
+  };
+  const length = Math.hypot(raw.x, raw.y, raw.z) || 1;
+  return {
+    x: raw.x / length,
+    y: raw.y / length,
+    z: raw.z / length
+  };
+}
+
+function randomAxisComponent() {
+  const magnitude = 0.35 + Math.random() * 0.75;
+  return Math.random() < 0.5 ? -magnitude : magnitude;
+}
+
+function rollStopMs(index: number) {
+  return Math.ceil(rollDurationSeconds(index) * 1000);
+}
+
+function rollCompleteMs(diceCount: number) {
+  return rollStopMs(Math.max(0, diceCount - 1)) + 80;
+}
+
+function rollDurationSeconds(index: number) {
+  return rollBaseDuration + Math.max(0, index) * rollStopStagger;
 }
