@@ -1,6 +1,7 @@
 import { createServer } from "node:http";
 import { WebSocketServer, type WebSocket } from "ws";
 import { createGame, reduceGame } from "../src/game/gameState";
+import { defaultCustomization, type DiceCustomization } from "../src/customization/diceCustomization";
 import { BET_GOALS, type ClientAction, type GameState, type PlayerId } from "../src/game/types";
 import type { ClientMessage, ServerMessage } from "../src/multiplayer/types";
 
@@ -9,6 +10,7 @@ type Client = {
   id?: PlayerId;
   roomId?: string;
   bet?: number;
+  customization?: DiceCustomization;
 };
 
 type Room = {
@@ -32,6 +34,7 @@ wss.on("connection", (socket) => {
   socket.on("message", (raw) => {
     const message = JSON.parse(String(raw)) as ClientMessage;
     if (message.type === "join") {
+      client.customization = message.customization;
       joinQueue(client, message.bet);
       return;
     }
@@ -87,7 +90,10 @@ function createRoom(bet: number, first: Client, second: Client) {
   second.id = "p2";
   first.roomId = id;
   second.roomId = id;
-  const state = createGame("multiplayer", bet, BET_GOALS[bet] ?? 1500, ["Player 1", "Player 2"]);
+  const state = createGame("multiplayer", bet, BET_GOALS[bet] ?? 1500, ["Player 1", "Player 2"], {
+    p1: first.customization ?? defaultCustomization,
+    p2: second.customization ?? defaultCustomization
+  });
   const room = { id, clients: [first, second], state };
   rooms.set(id, room);
   send(first, { type: "matched", playerId: "p1", state });
