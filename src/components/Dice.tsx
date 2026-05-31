@@ -24,7 +24,9 @@ export function Dice({ die, disabled, rolling, compact = false, onClick }: Props
       className={`die ${compact ? "die-compact" : ""} ${die.selected ? "selected" : ""} ${rolling ? "rolling" : ""}`}
       disabled={disabled}
       onClick={onClick}
+      type="button"
       aria-label={`Die ${die.value}${die.selected ? " selected" : ""}`}
+      aria-pressed={compact ? undefined : die.selected}
     >
       {Array.from({ length: 9 }, (_, index) => (
         <span key={index} className={pips.includes(index) ? "pip visible" : "pip"} />

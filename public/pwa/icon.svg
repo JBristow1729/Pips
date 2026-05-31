@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Tavern Dice icon">
+  <defs>
+    <radialGradient id="glow" cx="50%" cy="30%" r="70%">
+      <stop offset="0" stop-color="#f2cc62"/>
+      <stop offset="0.45" stop-color="#6d3f23"/>
+      <stop offset="1" stop-color="#120e0a"/>
+    </radialGradient>
+    <linearGradient id="parchment" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#fff3d0"/>
+      <stop offset="1" stop-color="#c9a56a"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="84" fill="url(#glow)"/>
+  <rect x="64" y="78" width="384" height="356" rx="32" fill="#24140d" stroke="#f2cc62" stroke-width="14"/>
+  <rect x="105" y="124" width="302" height="92" rx="12" fill="#ead6a7" stroke="#7b481f" stroke-width="8"/>
+  <path d="M142 181h228" stroke="#7b481f" stroke-width="12" stroke-linecap="round"/>
+  <g fill="url(#parchment)" stroke="#5b3218" stroke-width="9">
+    <rect x="130" y="251" width="108" height="108" rx="22" transform="rotate(-9 184 305)"/>
+    <rect x="272" y="247" width="108" height="108" rx="22" transform="rotate(8 326 301)"/>
+  </g>
+  <g fill="#24140d">
+    <circle cx="161" cy="286" r="10"/>
+    <circle cx="185" cy="306" r="10"/>
+    <circle cx="209" cy="326" r="10"/>
+    <circle cx="303" cy="279" r="10"/>
+    <circle cx="350" cy="326" r="10"/>
+  </g>
+</svg>

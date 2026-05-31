@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Tavern Dice maskable icon">
+  <rect width="512" height="512" fill="#120e0a"/>
+  <circle cx="256" cy="246" r="214" fill="#24140d" stroke="#d6a33a" stroke-width="18"/>
+  <path d="M126 164h260v78H126z" fill="#ead6a7" stroke="#6d3f23" stroke-width="10"/>
+  <path d="M162 204h188" stroke="#6d3f23" stroke-width="12" stroke-linecap="round"/>
+  <rect x="135" y="279" width="102" height="102" rx="20" fill="#ead6a7" stroke="#6d3f23" stroke-width="9" transform="rotate(-8 186 330)"/>
+  <rect x="278" y="274" width="102" height="102" rx="20" fill="#ead6a7" stroke="#6d3f23" stroke-width="9" transform="rotate(8 329 325)"/>
+  <g fill="#24140d">
+    <circle cx="164" cy="312" r="10"/>
+    <circle cx="187" cy="331" r="10"/>
+    <circle cx="211" cy="349" r="10"/>
+    <circle cx="309" cy="306" r="10"/>
+    <circle cx="350" cy="344" r="10"/>
+  </g>
+</svg>

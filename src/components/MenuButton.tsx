@@ -8,7 +8,10 @@ type Props = ButtonHTMLAttributes<HTMLButtonElement> & {
 export function MenuButton({ children, variant = "primary", className = "", ...props }: Props) {
   return (
     <button className={`button button-${variant} ${className}`} {...props}>
-      {children}
+      <span className="button-label">
+        <span className="button-ornament" aria-hidden="true" />
+        <span>{children}</span>
+      </span>
     </button>
   );
 }
