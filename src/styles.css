@@ -149,8 +149,7 @@ input:focus-visible {
 
 .panel-kicker,
 .gold-label,
-.turn-marker,
-.connection-ribbon span {
+.turn-marker {
   color: var(--color-gold);
   font-size: clamp(0.72rem, 0.63rem + 0.32vw, 0.9rem);
   font-weight: 800;
@@ -372,9 +371,9 @@ h1 {
 .wait-panel,
 .dialog,
 .rules-dialog,
+.customise-dialog,
 .scoreboard,
-.table-panel,
-.connection-ribbon {
+.table-panel {
   border: var(--border-carved);
   border-radius: var(--radius-panel);
   box-shadow: var(--shadow-panel);
@@ -383,7 +382,8 @@ h1 {
 .bet-panel,
 .wait-panel,
 .dialog,
-.rules-dialog {
+.rules-dialog,
+.customise-dialog {
   color: var(--color-ink);
   background:
     linear-gradient(135deg, rgba(255, 255, 255, 0.28), transparent 26%),
@@ -522,8 +522,9 @@ h1 {
 
 .game-topbar {
   display: grid;
-  grid-template-columns: auto minmax(220px, 1fr) auto;
+  grid-template-columns: auto auto;
   align-items: center;
+  justify-content: space-between;
   gap: var(--space-3);
 }
 
@@ -531,20 +532,6 @@ h1 {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-}
-
-.connection-ribbon {
-  justify-self: center;
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: 0.6rem 0.9rem;
-  background:
-    linear-gradient(90deg, rgba(214, 163, 58, 0.12), rgba(24, 16, 10, 0.94), rgba(214, 163, 58, 0.12));
-}
-
-.connection-ribbon strong {
-  color: var(--color-cream);
 }
 
 .game-layout {
@@ -593,7 +580,19 @@ h1 {
 }
 
 .turn-marker {
-  white-space: nowrap;
+  width: 1.35rem;
+  height: 1.35rem;
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  color: var(--color-gold);
+  font-size: 1.2rem;
+  line-height: 1;
+  text-shadow: 0 2px 0 #000;
+}
+
+.turn-marker::before {
+  content: "★";
 }
 
 .score-lines {
@@ -706,6 +705,10 @@ h1 {
 .dice-count-6 .die:nth-child(6) { grid-column: 5 / span 2; }
 
 .die {
+  --die-body: #f7ecd1;
+  --die-shadow: #b98f54;
+  --pip-color: #181511;
+  --pip-shadow: #050403;
   width: var(--die-size);
   height: var(--die-size);
   display: grid;
@@ -716,8 +719,9 @@ h1 {
   border: 2px solid #6b4723;
   border-radius: 10px;
   background:
-    radial-gradient(circle at 30% 24%, #fff8e0, #eedcae 56%, #c39a5e 100%);
-  box-shadow: 0 9px 0 #513112, 0 18px 24px rgba(0, 0, 0, 0.34), inset -7px -8px 13px rgba(91, 55, 18, 0.18);
+    radial-gradient(circle at 30% 24%, rgba(255, 255, 255, 0.5), transparent 20%),
+    radial-gradient(circle at 30% 24%, var(--die-body), var(--die-body) 56%, var(--die-shadow) 100%);
+  box-shadow: 0 9px 0 var(--die-shadow), 0 18px 24px rgba(0, 0, 0, 0.34), inset -7px -8px 13px rgba(0, 0, 0, 0.18);
   cursor: pointer;
   transition: transform var(--duration-fast) ease, box-shadow var(--duration-fast) ease, background var(--duration-fast) ease;
 }
@@ -731,7 +735,8 @@ h1 {
 .die.selected {
   border-color: #f7d66f;
   background:
-    radial-gradient(circle at 30% 24%, #fff6ca, #e9bb4c 58%, #99642a 100%);
+    radial-gradient(circle at 30% 24%, rgba(255, 255, 255, 0.55), transparent 20%),
+    radial-gradient(circle at 30% 24%, var(--die-body), var(--die-body) 52%, var(--die-shadow) 100%);
 }
 
 .die:disabled {
@@ -763,8 +768,22 @@ h1 {
 }
 
 .pip.visible {
-  background: radial-gradient(circle at 35% 35%, #4b2a18, #120b07);
+  background: radial-gradient(circle at 35% 35%, var(--pip-color), var(--pip-shadow));
   box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.16);
+}
+
+.pip-shape-diamond .pip.visible {
+  border-radius: 2px;
+  transform: rotate(45deg);
+}
+
+.pip-shape-square .pip.visible {
+  border-radius: 2px;
+}
+
+.pip-shape-triangle .pip.visible {
+  border-radius: 0;
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
 }
 
 .game-actions {
@@ -811,6 +830,151 @@ h1 {
   display: grid;
   gap: var(--space-3);
   overflow: auto;
+}
+
+.customise-dialog {
+  width: min(980px, 100%);
+  max-height: calc(100vh - 2rem);
+  padding: var(--space-4);
+  display: grid;
+  grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+  gap: var(--space-3);
+  overflow: hidden;
+}
+
+.customise-heading {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.customise-heading h2 {
+  margin: 0;
+  color: var(--color-ink);
+  font-family: var(--font-heading);
+  font-size: clamp(1.8rem, 1.4rem + 1.2vw, 2.7rem);
+  line-height: 1;
+}
+
+.customise-purse {
+  flex: 0 0 auto;
+  min-width: 4.6rem;
+  padding: 0.48rem 0.72rem;
+  color: var(--color-cream);
+  font-weight: 900;
+  text-align: center;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.1), transparent),
+    linear-gradient(180deg, #5a3420, #25150d);
+  border: 1px solid rgba(242, 204, 98, 0.45);
+  border-radius: var(--radius-small);
+}
+
+.customise-preview {
+  --die-size: clamp(2.8rem, 7vw, 4.8rem);
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  background:
+    radial-gradient(ellipse at center, rgba(27, 14, 9, 0.09), rgba(0, 0, 0, 0.24)),
+    linear-gradient(135deg, rgba(111, 65, 31, 0.84), rgba(46, 27, 16, 0.88));
+  border: 1px solid rgba(42, 26, 16, 0.22);
+  border-radius: var(--radius-panel);
+  box-shadow: inset 0 0 24px rgba(0, 0, 0, 0.28);
+}
+
+.customise-preview .die-compact {
+  --die-size: clamp(2.8rem, 7vw, 4.8rem);
+  cursor: default;
+}
+
+.customise-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.4rem;
+  border-bottom: 2px solid rgba(42, 26, 16, 0.2);
+}
+
+.customise-tabs button {
+  min-height: 2.65rem;
+  padding: 0.55rem 0.65rem;
+  color: #452712;
+  font-weight: 900;
+  background: rgba(255, 243, 208, 0.24);
+  border: 1px solid rgba(42, 26, 16, 0.2);
+  border-bottom: 0;
+  border-radius: var(--radius-small) var(--radius-small) 0 0;
+  cursor: pointer;
+}
+
+.customise-tabs button.active {
+  color: var(--color-cream);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.12), transparent),
+    linear-gradient(180deg, #6d3f23, #2d1a10);
+}
+
+.customise-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8.2rem, 1fr));
+  gap: var(--space-2);
+  min-height: 0;
+  overflow: auto;
+  padding-right: 0.25rem;
+  overscroll-behavior: contain;
+}
+
+.customise-card {
+  aspect-ratio: 1;
+  min-width: 0;
+  display: grid;
+  grid-template-rows: 1fr auto auto;
+  justify-items: center;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.75rem;
+  color: var(--color-ink);
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.24), transparent 34%),
+    linear-gradient(180deg, rgba(255, 243, 208, 0.62), rgba(199, 161, 97, 0.7));
+  border: 1px solid rgba(42, 26, 16, 0.28);
+  border-radius: var(--radius-panel);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), 0 10px 18px rgba(74, 42, 18, 0.14);
+  cursor: pointer;
+}
+
+.customise-card:hover {
+  border-color: rgba(91, 53, 24, 0.6);
+  filter: brightness(1.03);
+}
+
+.customise-card.equipped {
+  border-color: #6d3f23;
+  box-shadow: inset 0 0 0 2px rgba(109, 63, 35, 0.34), 0 10px 18px rgba(74, 42, 18, 0.14);
+}
+
+.customise-card .die-compact {
+  --die-size: clamp(2.6rem, 5vw, 3.7rem);
+  cursor: pointer;
+}
+
+.customise-card-name {
+  font-weight: 900;
+  text-align: center;
+}
+
+.customise-card strong {
+  color: #5a3218;
+  font-size: 0.92rem;
+}
+
+.customise-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
 }
 
 .rules-list {
@@ -1040,14 +1204,7 @@ h1 {
   }
 
   .game-topbar-actions {
-    grid-column: 1 / -1;
     justify-content: space-between;
-  }
-
-  .connection-ribbon {
-    justify-self: stretch;
-    justify-content: space-between;
-    min-width: 0;
   }
 
   .game-topbar > .gold-display {
@@ -1149,6 +1306,33 @@ h1 {
     max-height: calc(100vh - 1rem);
   }
 
+  .customise-dialog {
+    max-height: calc(100vh - 1rem);
+    padding: var(--space-3);
+  }
+
+  .customise-heading {
+    align-items: center;
+  }
+
+  .customise-tabs {
+    grid-template-columns: 1fr;
+    border-bottom: 0;
+  }
+
+  .customise-tabs button {
+    border: 1px solid rgba(42, 26, 16, 0.2);
+    border-radius: var(--radius-small);
+  }
+
+  .customise-options {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .customise-actions .button {
+    width: auto;
+  }
+
   .rule-row {
     grid-template-columns: 1fr;
     gap: 0.35rem;
@@ -1160,12 +1344,12 @@ h1 {
 }
 
 @media (max-width: 420px) {
-  .score-lines {
-    font-size: 0.82rem;
+  .customise-options {
+    grid-template-columns: 1fr;
   }
 
-  .turn-marker {
-    display: none;
+  .score-lines {
+    font-size: 0.82rem;
   }
 
   .game-actions {

@@ -1,3 +1,5 @@
+import type { DiceCustomization } from "../customization/diceCustomization";
+
 export type DieValue = 1 | 2 | 3 | 4 | 5 | 6;
 export type Mode = "singleplayer" | "multiplayer";
 export type PlayerId = "p1" | "p2";
@@ -8,6 +10,7 @@ export type PlayerState = {
   total: number;
   held: number;
   current: number;
+  diceCustomization?: DiceCustomization;
 };
 
 export type GamePhase = "ready" | "rolling" | "selecting" | "bust" | "gameOver";

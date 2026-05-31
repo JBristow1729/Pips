@@ -1,4 +1,5 @@
 import type { ClientMessage, ServerMessage } from "./types";
+import type { DiceCustomization } from "../customization/diceCustomization";
 
 export type MultiplayerConnection = {
   send: (message: ClientMessage) => void;
@@ -8,6 +9,7 @@ export type MultiplayerConnection = {
 export function connectMultiplayer(
   bet: number,
   goal: number,
+  customization: DiceCustomization,
   onMessage: (message: ServerMessage) => void,
   onError: (message: string) => void
 ): MultiplayerConnection {
@@ -26,7 +28,7 @@ export function connectMultiplayer(
   const socket = new WebSocket(url);
 
   socket.addEventListener("open", () => {
-    socket.send(JSON.stringify({ type: "join", bet, goal } satisfies ClientMessage));
+    socket.send(JSON.stringify({ type: "join", bet, goal, customization } satisfies ClientMessage));
   });
 
   socket.addEventListener("message", (event) => {

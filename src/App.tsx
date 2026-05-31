@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Dice } from "./components/Dice";
+import { CustomiseDialog } from "./components/CustomiseDialog";
 import { Dialog } from "./components/Dialog";
 import { MenuButton } from "./components/MenuButton";
 import { Scoreboard } from "./components/Scoreboard";
@@ -9,6 +10,7 @@ import { createGame, reduceGame } from "./game/gameState";
 import { BET_GOALS, type GameState, type Mode, type PlayerId } from "./game/types";
 import type { Die, DieValue } from "./game/types";
 import { connectMultiplayer, type MultiplayerConnection } from "./multiplayer/client";
+import { createRandomCustomization, readCustomizationInventory, writeCustomizationInventory, type DiceCustomizationInventory } from "./customization/diceCustomization";
 import { changeWallet, readWallet } from "./storage/wallet";
 
 type Screen = "main" | "bet" | "matchmaking" | "game";
@@ -103,6 +105,8 @@ export function App() {
   const [playerId, setPlayerId] = useState<PlayerId>("p1");
   const [leaveDialog, setLeaveDialog] = useState(false);
   const [rulesOpen, setRulesOpen] = useState(false);
+  const [customiseOpen, setCustomiseOpen] = useState(false);
+  const [customizationInventory, setCustomizationInventory] = useState<DiceCustomizationInventory>(() => readCustomizationInventory());
   const [foundGold, setFoundGold] = useState<string | null>(null);
   const [muted, setMutedState] = useState(false);
   const [isRolling, setIsRolling] = useState(false);
@@ -215,7 +219,7 @@ export function App() {
   const startSingleplayer = () => {
     resolvedGameRef.current = false;
     setPlayerId("p1");
-    setGame(createGame("singleplayer", bet, goal));
+    setGame(createGame("singleplayer", bet, goal, ["You", "Computer"], { p1: customizationInventory.equipped, p2: createRandomCustomization() }));
     setScreen("game");
   };
 
@@ -226,6 +230,7 @@ export function App() {
     connectionRef.current = connectMultiplayer(
       bet,
       goal,
+      customizationInventory.equipped,
       (message) => {
         if (message.type === "matched") {
           setPlayerId(message.playerId);
@@ -322,6 +327,22 @@ export function App() {
     setGold(readWallet());
   };
 
+  const spendGold = (amount: number) => {
+    if (readWallet() < amount) return false;
+    setGold(changeWallet(-amount));
+    return true;
+  };
+
+  const saveCustomizationInventory = (inventory: DiceCustomizationInventory) => {
+    writeCustomizationInventory(inventory);
+    setCustomizationInventory(inventory);
+  };
+
+  const applyCustomizationInventory = (inventory: DiceCustomizationInventory) => {
+    saveCustomizationInventory(inventory);
+    setCustomiseOpen(false);
+  };
+
   const content = useMemo(() => {
     if (screen === "main") {
       return (
@@ -335,6 +356,7 @@ export function App() {
           <nav className="main-actions" aria-label="Game modes">
             <MenuButton onClick={() => selectMode("singleplayer")}>Singleplayer</MenuButton>
             <MenuButton onClick={() => selectMode("multiplayer")}>Multiplayer</MenuButton>
+            <MenuButton onClick={() => setCustomiseOpen(true)}>Customise</MenuButton>
           </nav>
         </main>
       );
@@ -422,10 +444,6 @@ export function App() {
                 Leave
               </MenuButton>
             </div>
-            <section className="connection-ribbon" aria-label="Game mode and turn status">
-              <span>{game.mode === "multiplayer" ? "Multiplayer table" : "House table"}</span>
-              <strong>{isMultiplayer ? (isMyTurn ? "Your turn" : "Opponent's turn") : game.activePlayer === "p1" ? "Your turn" : "House turn"}</strong>
-            </section>
             <GoldDisplay gold={gold} />
           </header>
           <section className="game-layout" aria-label="Game table">
@@ -447,6 +465,7 @@ export function App() {
                     die={die}
                     rolling={isRolling}
                     disabled={!controlsEnabled || game.phase !== "selecting"}
+                    customization={game.players[game.activePlayer].diceCustomization}
                     onClick={() => {
                       playTap();
                       sendAction("roll", die.id);
@@ -476,7 +495,7 @@ export function App() {
     }
 
     return null;
-  }, [screen, gold, mode, bet, goal, canAfford, game, controlsEnabled, selectedScoreValid, multiplayerError, playerId, isMultiplayer, isMyTurn, isRolling, rollVisual]);
+  }, [screen, gold, mode, bet, goal, canAfford, game, controlsEnabled, selectedScoreValid, multiplayerError, playerId, isMultiplayer, isMyTurn, isRolling, rollVisual, customizationInventory]);
 
   function selectMode(nextMode: Mode) {
     setMode(nextMode);
@@ -498,6 +517,16 @@ export function App() {
         <Dialog title="Are you sure you want to leave and forfeit your bet?" onYes={leaveGame} onNo={() => setLeaveDialog(false)} />
       )}
       {rulesOpen && <RulesDialog onClose={() => setRulesOpen(false)} />}
+      {customiseOpen && (
+        <CustomiseDialog
+          gold={gold}
+          inventory={customizationInventory}
+          onApply={applyCustomizationInventory}
+          onPurchase={saveCustomizationInventory}
+          onSpendGold={spendGold}
+          onClose={() => setCustomiseOpen(false)}
+        />
+      )}
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import { rollHasScoreableDice, scoreDice } from "./scoring";
+import type { DiceCustomization } from "../customization/diceCustomization";
 import type { ClientAction, Die, DieValue, GameState, Mode, PlayerId } from "./types";
 
 export function randomDie(): DieValue {
@@ -13,10 +14,6 @@ function turnMessage(name: string) {
   return name === "You" ? "Your turn" : `${name}'s turn`;
 }
 
-function keepsRollingMessage(name: string) {
-  return name === "You" ? "You keep rolling" : `${name} keeps rolling`;
-}
-
 function winMessage(name: string) {
   return name === "You" ? "You win!" : `${name} wins!`;
 }
@@ -29,7 +26,13 @@ export function createDice(count: number, values?: DieValue[]): Die[] {
   }));
 }
 
-export function createGame(mode: Mode, bet: number, goal: number, names = ["You", "Computer"]): GameState {
+export function createGame(
+  mode: Mode,
+  bet: number,
+  goal: number,
+  names = ["You", "Computer"],
+  customizations?: Partial<Record<PlayerId, DiceCustomization>>
+): GameState {
   return {
     mode,
     bet,
@@ -39,8 +42,8 @@ export function createGame(mode: Mode, bet: number, goal: number, names = ["You"
     message: turnMessage(names[0]),
     dice: createDice(6, [1, 1, 1, 5, 2, 3]),
     players: {
-      p1: { id: "p1", name: names[0], total: 0, held: 0, current: 0 },
-      p2: { id: "p2", name: names[1], total: 0, held: 0, current: 0 }
+      p1: { id: "p1", name: names[0], total: 0, held: 0, current: 0, diceCustomization: customizations?.p1 },
+      p2: { id: "p2", name: names[1], total: 0, held: 0, current: 0, diceCustomization: customizations?.p2 }
     },
     resolved: false
   };
@@ -128,7 +131,7 @@ export function reduceGame(state: GameState, action: ClientAction, forcedRoll?: 
       ...state,
       dice: nextDice,
       phase: "ready",
-      message: keepsRollingMessage(state.players[state.activePlayer].name),
+      message: turnMessage(state.players[state.activePlayer].name),
       players: {
         ...state.players,
         [state.activePlayer]: {

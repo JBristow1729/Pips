@@ -16,7 +16,7 @@ export function Scoreboard({ player, active }: Props) {
     <section className={`scoreboard ${active ? "active" : ""}`} aria-label={`${player.name} scorecard`}>
       <div className="scoreboard-heading">
         <h2>{player.name}</h2>
-        {active && <span className="turn-marker">At the table</span>}
+        {active && <span className="turn-marker" aria-label="At the table" />}
       </div>
       <div className="score-lines">
         {rows.map(([label, value]) => (

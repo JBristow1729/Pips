@@ -1,4 +1,5 @@
 import type { GameState, PlayerId } from "../game/types";
+import type { DiceCustomization } from "../customization/diceCustomization";
 
 export type ServerMessage =
   | { type: "waiting"; bet: number }
@@ -7,7 +8,7 @@ export type ServerMessage =
   | { type: "error"; message: string };
 
 export type ClientMessage =
-  | { type: "join"; bet: number; goal: number }
+  | { type: "join"; bet: number; goal: number; customization?: DiceCustomization }
   | { type: "roll" }
   | { type: "toggleDie"; dieId: string }
   | { type: "hold" }
