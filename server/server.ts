@@ -11,17 +11,20 @@ type Client = {
   roomId?: string;
   bet?: number;
   customization?: DiceCustomization;
+  watchingCounts?: boolean;
 };
 
 type Room = {
   id: string;
   clients: Client[];
   state: GameState;
+  rematchFrom?: PlayerId;
 };
 
 const port = Number.parseInt(process.env.PORT ?? "1999", 10);
 const waiting = new Map<number, Client[]>();
 const rooms = new Map<string, Room>();
+const countWatchers = new Set<Client>();
 const httpServer = createServer((_, response) => {
   response.writeHead(200, { "content-type": "text/plain" });
   response.end("Tavern Dice multiplayer server is running.\n");
@@ -33,7 +36,16 @@ wss.on("connection", (socket) => {
 
   socket.on("message", (raw) => {
     const message = JSON.parse(String(raw)) as ClientMessage;
+    if (message.type === "watchWaitingCounts") {
+      client.watchingCounts = true;
+      countWatchers.add(client);
+      sendWaitingCounts(client);
+      return;
+    }
+
     if (message.type === "join") {
+      client.watchingCounts = false;
+      countWatchers.delete(client);
       client.customization = message.customization;
       joinQueue(client, message.bet);
       return;
@@ -42,6 +54,16 @@ wss.on("connection", (socket) => {
     const room = client.roomId ? rooms.get(client.roomId) : undefined;
     if (!room || !client.id) {
       send(client, { type: "error", message: "You are not in a game room yet." });
+      return;
+    }
+
+    if (message.type === "rematchRequest") {
+      requestRematch(room, client);
+      return;
+    }
+
+    if (message.type === "rematchResponse") {
+      respondToRematch(room, message.accepted);
       return;
     }
 
@@ -61,6 +83,7 @@ wss.on("connection", (socket) => {
   });
 
   socket.on("close", () => {
+    countWatchers.delete(client);
     removeFromQueue(client);
     const room = client.roomId ? rooms.get(client.roomId) : undefined;
     if (room && client.id && room.state.phase !== "gameOver") {
@@ -77,10 +100,12 @@ function joinQueue(client: Client, bet: number) {
   queue.push(client);
   waiting.set(normalizedBet, queue);
   send(client, { type: "waiting", bet: normalizedBet });
+  broadcastWaitingCounts();
 
   if (queue.length >= 2) {
     const players = queue.splice(0, 2);
     createRoom(normalizedBet, players[0], players[1]);
+    broadcastWaitingCounts();
   }
 }
 
@@ -105,6 +130,32 @@ function removeFromQueue(client: Client) {
   const queue = waiting.get(client.bet);
   if (!queue) return;
   waiting.set(client.bet, queue.filter((candidate) => candidate !== client));
+  broadcastWaitingCounts();
+}
+
+function requestRematch(room: Room, client: Client) {
+  if (room.state.phase !== "gameOver" || !client.id) return;
+  room.rematchFrom = client.id;
+  send(client, { type: "rematchWaiting" });
+  const opponent = room.clients.find((candidate) => candidate !== client);
+  if (opponent) send(opponent, { type: "rematchChallenge", bet: room.state.bet });
+}
+
+function respondToRematch(room: Room, accepted: boolean) {
+  if (!room.rematchFrom) return;
+  if (!accepted) {
+    room.rematchFrom = undefined;
+    broadcast(room, { type: "rematchDeclined" });
+    rooms.delete(room.id);
+    return;
+  }
+
+  room.rematchFrom = undefined;
+  room.state = createGame("multiplayer", room.state.bet, BET_GOALS[room.state.bet] ?? 1500, ["Player 1", "Player 2"], {
+    p1: room.clients.find((client) => client.id === "p1")?.customization ?? defaultCustomization,
+    p2: room.clients.find((client) => client.id === "p2")?.customization ?? defaultCustomization
+  });
+  broadcast(room, { type: "rematchStarted", state: room.state });
 }
 
 function toAction(message: ClientMessage, playerId: PlayerId): ClientAction | null {
@@ -124,6 +175,18 @@ function send(client: Client, message: ServerMessage) {
   if (client.socket.readyState === client.socket.OPEN) {
     client.socket.send(JSON.stringify(message));
   }
+}
+
+function waitingCounts(): Record<number, number> {
+  return Object.fromEntries([0, 10, 20, 30].map((bet) => [bet, waiting.get(bet)?.length ?? 0]));
+}
+
+function sendWaitingCounts(client: Client) {
+  send(client, { type: "waitingCounts", counts: waitingCounts() });
+}
+
+function broadcastWaitingCounts() {
+  for (const client of countWatchers) sendWaitingCounts(client);
 }
 
 httpServer.listen(port, "0.0.0.0", () => {

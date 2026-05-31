@@ -400,6 +400,12 @@ h1 {
   justify-self: start;
 }
 
+.bet-panel {
+  display: grid;
+  grid-template-rows: auto auto minmax(7.8rem, 1fr) minmax(1.45rem, auto) auto;
+  align-items: center;
+}
+
 .bet-panel h2,
 .wait-panel h2,
 .dialog h2,
@@ -410,13 +416,10 @@ h1 {
   line-height: 1;
 }
 
-.bet-panel .panel-copy {
-  min-height: 3.1em;
-}
-
 .bet-slider-wrap {
   width: min(360px, 100%);
-  margin: var(--space-4) auto var(--space-3);
+  margin: var(--space-3) auto;
+  align-self: center;
 }
 
 .bet-slider-wrap label {
@@ -492,8 +495,31 @@ h1 {
   border-radius: var(--radius-small);
 }
 
-.bet-panel .button {
-  margin-left: var(--space-2);
+.waiting-count {
+  min-height: 1.45rem;
+  margin: 0 0 var(--space-2);
+  color: #5a3218;
+  font-weight: 900;
+}
+
+.waiting-count-empty {
+  visibility: hidden;
+}
+
+.bet-footer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+}
+
+.bet-footer .goal-plaque {
+  justify-self: start;
+}
+
+.bet-footer .button {
+  justify-self: end;
 }
 
 .matchmaking-stats {
@@ -1180,18 +1206,19 @@ h1 {
     margin-inline: auto;
   }
 
-  .menu-bet .bet-panel .panel-copy {
-    min-height: 3.2em;
-  }
-
   .menu-matchmaking .wait-panel {
     justify-self: center;
     width: min(100%, 340px);
     margin-inline: auto;
   }
 
-  .bet-panel .button {
-    margin: var(--space-2) 0 0;
+  .bet-footer {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .bet-footer .button {
+    width: auto;
+    min-width: 8.4rem;
   }
 
   .game-screen {
@@ -1282,6 +1309,14 @@ h1 {
     gap: 0.45rem;
   }
 
+  .game-over-actions {
+    width: auto;
+    max-width: min(100%, 22rem);
+    grid-template-columns: repeat(2, minmax(7.5rem, 1fr));
+    justify-content: center;
+    justify-self: center;
+  }
+
   .game-actions .button {
     min-width: 0;
     padding-inline: 0.4rem;
@@ -1354,6 +1389,10 @@ h1 {
 
   .game-actions {
     grid-template-columns: 1fr;
+  }
+
+  .game-over-actions {
+    width: min(100%, 14rem);
   }
 }
 
