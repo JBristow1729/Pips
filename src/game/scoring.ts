@@ -75,3 +75,22 @@ export function highestScoringSelection(roll: DieValue[]): DieValue[] {
 
   return best;
 }
+
+export function scoringSelections(roll: DieValue[]): Array<{ dice: DieValue[]; score: number }> {
+  const selections = new Map<string, { dice: DieValue[]; score: number }>();
+  const totalMasks = 1 << roll.length;
+
+  for (let mask = 1; mask < totalMasks; mask += 1) {
+    const dice = roll.filter((_, index) => mask & (1 << index));
+    const result = scoreDice(dice);
+    if (!result.valid) continue;
+
+    const key = [...dice].sort((a, b) => a - b).join(",");
+    const existing = selections.get(key);
+    if (!existing || result.score > existing.score) {
+      selections.set(key, { dice, score: result.score });
+    }
+  }
+
+  return [...selections.values()];
+}
