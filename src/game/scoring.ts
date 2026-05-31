@@ -14,31 +14,80 @@ const sameSet = (dice: DieValue[], values: DieValue[]) => {
   return sortedDice === sortedValues;
 };
 
+const countDice = (dice: DieValue[]) => {
+  const counts = new Map<DieValue, number>();
+  for (const die of dice) counts.set(die, (counts.get(die) ?? 0) + 1);
+  return counts;
+};
+
+const countKey = (counts: Map<DieValue, number>) =>
+  ([1, 2, 3, 4, 5, 6] as DieValue[]).map((face) => counts.get(face) ?? 0).join(",");
+
+const hasDice = (counts: Map<DieValue, number>, dice: DieValue[]) => {
+  const required = countDice(dice);
+  for (const [face, count] of required) {
+    if ((counts.get(face) ?? 0) < count) return false;
+  }
+  return true;
+};
+
+const removeDice = (counts: Map<DieValue, number>, dice: DieValue[]) => {
+  const next = new Map(counts);
+  for (const die of dice) {
+    const count = (next.get(die) ?? 0) - 1;
+    if (count > 0) {
+      next.set(die, count);
+    } else {
+      next.delete(die);
+    }
+  }
+  return next;
+};
+
+function bestScoreForCounts(counts: Map<DieValue, number>, memo = new Map<string, number | null>()): number | null {
+  if ([...counts.values()].every((count) => count === 0)) return 0;
+
+  const key = countKey(counts);
+  if (memo.has(key)) return memo.get(key) ?? null;
+
+  const groups: Array<{ dice: DieValue[]; score: number }> = [
+    { dice: [1, 2, 3, 4, 5, 6], score: 1500 },
+    { dice: [2, 3, 4, 5, 6], score: 750 },
+    { dice: [1, 2, 3, 4, 5], score: 500 }
+  ];
+
+  for (const face of [1, 2, 3, 4, 5, 6] as DieValue[]) {
+    const count = counts.get(face) ?? 0;
+    for (let length = 3; length <= count; length += 1) {
+      groups.push({ dice: Array.from({ length }, () => face), score: faceScore(face) * 2 ** (length - 3) });
+    }
+  }
+
+  if ((counts.get(1) ?? 0) > 0) groups.push({ dice: [1], score: 100 });
+  if ((counts.get(5) ?? 0) > 0) groups.push({ dice: [5], score: 50 });
+
+  let best: number | null = null;
+  for (const group of groups) {
+    if (!hasDice(counts, group.dice)) continue;
+
+    const remainderScore = bestScoreForCounts(removeDice(counts, group.dice), memo);
+    if (remainderScore === null) continue;
+
+    const total = group.score + remainderScore;
+    best = best === null ? total : Math.max(best, total);
+  }
+
+  memo.set(key, best);
+  return best;
+}
+
 export function scoreDice(selected: DieValue[]): ScoreResult {
   if (selected.length === 0) return { valid: false, score: 0 };
 
   const dice = [...selected].sort((a, b) => a - b);
-  if (sameSet(dice, [1, 2, 3, 4, 5, 6])) return { valid: true, score: 1500 };
-  if (sameSet(dice, [1, 2, 3, 4, 5])) return { valid: true, score: 500 };
-  if (sameSet(dice, [2, 3, 4, 5, 6])) return { valid: true, score: 750 };
+  const score = bestScoreForCounts(countDice(dice));
 
-  const counts = new Map<DieValue, number>();
-  for (const die of dice) counts.set(die, (counts.get(die) ?? 0) + 1);
-
-  let score = 0;
-  for (const [face, count] of counts) {
-    if (count >= 3) {
-      score += faceScore(face) * 2 ** (count - 3);
-    } else if (face === 1) {
-      score += count * 100;
-    } else if (face === 5) {
-      score += count * 50;
-    } else {
-      return { valid: false, score: 0 };
-    }
-  }
-
-  return score > 0 ? { valid: true, score } : { valid: false, score: 0 };
+  return score !== null && score > 0 ? { valid: true, score } : { valid: false, score: 0 };
 }
 
 export function rollHasScoreableDice(roll: DieValue[]): boolean {

@@ -26,6 +26,10 @@ describe("scoreDice", () => {
     expect(scoreDice([3, 3, 3, 5]).score).toBe(350);
   });
 
+  it("scores two separate three-of-a-kind groups additively", () => {
+    expect(scoreDice([3, 3, 3, 5, 5, 5])).toEqual({ valid: true, score: 800 });
+  });
+
   it("rejects unscored dice", () => {
     expect(scoreDice([1, 1, 1, 3])).toEqual({ valid: false, score: 0 });
   });
@@ -40,6 +44,22 @@ describe("scoreDice", () => {
 
   it("scores a full straight as 1500", () => {
     expect(scoreDice([1, 2, 3, 4, 5, 6]).score).toBe(1500);
+  });
+
+  it("scores a high straight with an extra 5 additively", () => {
+    expect(scoreDice([2, 3, 4, 5, 5, 6])).toEqual({ valid: true, score: 800 });
+  });
+
+  it("scores a low straight with an extra 5 additively", () => {
+    expect(scoreDice([1, 2, 3, 4, 5, 5])).toEqual({ valid: true, score: 550 });
+  });
+
+  it("scores a low straight with an extra 1 additively", () => {
+    expect(scoreDice([1, 1, 2, 3, 4, 5])).toEqual({ valid: true, score: 600 });
+  });
+
+  it("rejects a straight plus a non-scoring duplicate", () => {
+    expect(scoreDice([2, 3, 4, 4, 5, 6])).toEqual({ valid: false, score: 0 });
   });
 });
 
