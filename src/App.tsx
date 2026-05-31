@@ -37,7 +37,8 @@ const rollAnimationChains: DieValue[][] = [
 function GoldDisplay({ gold }: { gold: number }) {
   return (
     <div className="gold-display" aria-label={`${gold} gold`}>
-      <span className="coin" />
+      <span className="coin" aria-hidden="true" />
+      <span className="gold-label">Purse</span>
       <strong>{gold}g</strong>
     </div>
   );
@@ -76,7 +77,8 @@ function RulesDialog({ onClose }: { onClose: () => void }) {
   return (
     <div className="dialog-backdrop">
       <section className="rules-dialog" role="dialog" aria-modal="true" aria-labelledby="rules-title">
-        <h2 id="rules-title">Rules</h2>
+        <div className="panel-kicker">House Notice</div>
+        <h2 id="rules-title">Scoring Rules</h2>
         <div className="rules-list">
           {rows.map((row) => (
             <div className="rule-row" key={`${row.name}-${row.score}`}>
@@ -323,12 +325,14 @@ export function App() {
   const content = useMemo(() => {
     if (screen === "main") {
       return (
-        <main className="menu-screen">
-          <div className="top-bar">
+        <main className="menu-screen menu-home">
+          <div className="hero-panel">
             <h1>Tavern Dice</h1>
+          </div>
+          <div className="top-bar" aria-label="Player wallet">
             <GoldDisplay gold={gold} />
           </div>
-          <nav className="main-actions">
+          <nav className="main-actions" aria-label="Game modes">
             <MenuButton onClick={() => selectMode("singleplayer")}>Singleplayer</MenuButton>
             <MenuButton onClick={() => selectMode("multiplayer")}>Multiplayer</MenuButton>
           </nav>
@@ -338,14 +342,17 @@ export function App() {
 
     if (screen === "bet") {
       return (
-        <main className="menu-screen">
-          <div className="top-bar">
+        <main className="menu-screen menu-bet">
+          <div className="hero-panel compact">
             <h1>Tavern Dice</h1>
+          </div>
+          <div className="top-bar" aria-label="Player wallet">
             <GoldDisplay gold={gold} />
           </div>
           <section className="bet-panel">
+            <div className="panel-kicker">Stakes</div>
             <h2>Select your bet</h2>
-            <p>{mode === "singleplayer" ? "Click Play to start Singleplayer" : "Click Play to enter Multiplayer matchmaking"}</p>
+            <p className="panel-copy">{mode === "singleplayer" ? "Start a private round against the house." : "Enter matchmaking for a matching wager."}</p>
             <div className="bet-slider-wrap">
               <label htmlFor="bet-slider">Select Bet</label>
               <div className="bet-slider-shell">
@@ -378,12 +385,19 @@ export function App() {
 
     if (screen === "matchmaking") {
       return (
-        <main className="menu-screen centered">
-          <GoldDisplay gold={gold} />
+        <main className="menu-screen centered menu-matchmaking">
+          <div className="top-bar" aria-label="Player wallet">
+            <GoldDisplay gold={gold} />
+          </div>
           <section className="wait-panel">
-            <h2>Waiting for another player with the same bet...</h2>
-            <p>Bet: {bet}g</p>
-            <p>Goal: {goal}</p>
+            <div className="loading-sigil" aria-hidden="true" />
+            <div className="panel-kicker">Noticeboard</div>
+            <h2>Finding a table...</h2>
+            <p className="panel-copy">Waiting for another player with the same bet.</p>
+            <div className="matchmaking-stats">
+              <span>Bet <strong>{bet}g</strong></span>
+              <span>Score <strong>{goal}</strong></span>
+            </div>
             {multiplayerError && <p className="error">{multiplayerError}</p>}
           </section>
           <MenuButton variant="small" className="back-button" onClick={returnMain}>
@@ -399,54 +413,70 @@ export function App() {
         : game.dice;
       return (
         <main className="game-screen">
-          <MenuButton variant="small" className="rules-button" onClick={() => setRulesOpen(true)}>
-            Rules
-          </MenuButton>
-          <GoldDisplay gold={gold} />
-          <div className="score-row">
-            <Scoreboard player={game.players.p1} active={game.activePlayer === "p1"} />
-            <section className="goal-board">Goal: {game.goal}</section>
-            <Scoreboard player={game.players.p2} active={game.activePlayer === "p2"} />
-          </div>
-          <div className={`center-message ${game.phase === "gameOver" ? "winner" : ""}`}>{game.message}</div>
-          <div className={`dice-tray dice-count-${renderedDice.length}`}>
-            {renderedDice.map((die) => (
-              <Dice
-                key={die.id}
-                die={die}
-                rolling={isRolling}
-                disabled={!controlsEnabled || game.phase !== "selecting"}
-                onClick={() => {
-                  playTap();
-                  sendAction("roll", die.id);
-                }}
-              />
-            ))}
-          </div>
-          {game.phase === "gameOver" ? (
-            <MenuButton onClick={returnMain}>Main Menu</MenuButton>
-          ) : (
-            <div className="game-actions">
-              <MenuButton disabled={!controlsEnabled || game.phase !== "ready"} onClick={roll}>
-                Roll
+          <header className="game-topbar">
+            <div className="game-topbar-actions">
+              <MenuButton variant="small" className="rules-button" onClick={() => setRulesOpen(true)}>
+                Rules
               </MenuButton>
-              <MenuButton disabled={!controlsEnabled || !selectedScoreValid} onClick={() => sendAction("hold")}>
-                Hold
-              </MenuButton>
-              <MenuButton disabled={!controlsEnabled || !selectedScoreValid} onClick={() => sendAction("bank")}>
-                Bank
+              <MenuButton variant="small" className="back-button" onClick={() => setLeaveDialog(true)}>
+                Leave
               </MenuButton>
             </div>
-          )}
-          <MenuButton variant="small" className="back-button" onClick={() => setLeaveDialog(true)}>
-            Back
-          </MenuButton>
+            <section className="connection-ribbon" aria-label="Game mode and turn status">
+              <span>{game.mode === "multiplayer" ? "Multiplayer table" : "House table"}</span>
+              <strong>{isMultiplayer ? (isMyTurn ? "Your turn" : "Opponent's turn") : game.activePlayer === "p1" ? "Your turn" : "House turn"}</strong>
+            </section>
+            <GoldDisplay gold={gold} />
+          </header>
+          <section className="game-layout" aria-label="Game table">
+            <aside className="players-panel" aria-label="Players">
+              <Scoreboard player={game.players.p1} active={game.activePlayer === "p1"} />
+              <Scoreboard player={game.players.p2} active={game.activePlayer === "p2"} />
+            </aside>
+            <section className="table-panel">
+              <div className="table-status">
+                <div className="goal-board">Goal: {game.goal}</div>
+                <div className={`center-message ${game.phase === "gameOver" ? "winner" : ""}`} role="status" aria-live="polite">
+                  {game.message}
+                </div>
+              </div>
+              <div className={`dice-tray dice-count-${renderedDice.length}`} aria-label="Dice tray">
+                {renderedDice.map((die) => (
+                  <Dice
+                    key={die.id}
+                    die={die}
+                    rolling={isRolling}
+                    disabled={!controlsEnabled || game.phase !== "selecting"}
+                    onClick={() => {
+                      playTap();
+                      sendAction("roll", die.id);
+                    }}
+                  />
+                ))}
+              </div>
+              {game.phase === "gameOver" ? (
+                <MenuButton onClick={returnMain}>Main Menu</MenuButton>
+              ) : (
+                <div className="game-actions" aria-label="Turn actions">
+                  <MenuButton disabled={!controlsEnabled || game.phase !== "ready"} onClick={roll}>
+                    Roll
+                  </MenuButton>
+                  <MenuButton disabled={!controlsEnabled || !selectedScoreValid} onClick={() => sendAction("hold")}>
+                    Hold
+                  </MenuButton>
+                  <MenuButton disabled={!controlsEnabled || !selectedScoreValid} onClick={() => sendAction("bank")}>
+                    Bank
+                  </MenuButton>
+                </div>
+              )}
+            </section>
+          </section>
         </main>
       );
     }
 
     return null;
-  }, [screen, gold, mode, bet, goal, canAfford, game, controlsEnabled, selectedScoreValid, multiplayerError, playerId, isRolling, rollVisual]);
+  }, [screen, gold, mode, bet, goal, canAfford, game, controlsEnabled, selectedScoreValid, multiplayerError, playerId, isMultiplayer, isMyTurn, isRolling, rollVisual]);
 
   function selectMode(nextMode: Mode) {
     setMode(nextMode);

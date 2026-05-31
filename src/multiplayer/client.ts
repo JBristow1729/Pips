@@ -11,7 +11,18 @@ export function connectMultiplayer(
   onMessage: (message: ServerMessage) => void,
   onError: (message: string) => void
 ): MultiplayerConnection {
-  const url = import.meta.env.VITE_MULTIPLAYER_URL || "ws://localhost:1999";
+  const url = getMultiplayerUrl();
+  if (!url) {
+    onError("Multiplayer backend is not configured for this deployment.");
+    return {
+      send() {
+        return undefined;
+      },
+      close() {
+        return undefined;
+      }
+    };
+  }
   const socket = new WebSocket(url);
 
   socket.addEventListener("open", () => {
@@ -34,4 +45,12 @@ export function connectMultiplayer(
       socket.close();
     }
   };
+}
+
+function getMultiplayerUrl() {
+  if (import.meta.env.VITE_MULTIPLAYER_URL) return import.meta.env.VITE_MULTIPLAYER_URL;
+  const host = window.location.hostname;
+  const isLocal = host === "localhost" || host === "127.0.0.1" || host.endsWith(".local");
+  if (isLocal) return `ws://${host}:1999`;
+  return "";
 }

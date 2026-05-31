@@ -13,8 +13,8 @@ type Props = {
 export function Dialog({ title, children, onYes, onNo, yesLabel = "Yes", noLabel = "No" }: Props) {
   return (
     <div className="dialog-backdrop">
-      <div className="dialog">
-        <h2>{title}</h2>
+      <div className="dialog" role="dialog" aria-modal="true" aria-labelledby="dialog-title">
+        <h2 id="dialog-title">{title}</h2>
         <div className="dialog-body">{children}</div>
         <div className="dialog-actions">
           {onNo && <MenuButton onClick={onNo}>{noLabel}</MenuButton>}

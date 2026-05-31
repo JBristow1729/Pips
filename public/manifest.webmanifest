@@ -1,0 +1,26 @@
+{
+  "name": "Tavern Dice",
+  "short_name": "Tavern Dice",
+  "description": "A medieval tavern dice game for solo and multiplayer browser play.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "theme_color": "#24140d",
+  "background_color": "#120e0a",
+  "categories": ["games", "entertainment"],
+  "icons": [
+    {
+      "src": "/pwa/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa/maskable-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}
