@@ -62,8 +62,13 @@ wss.on("connection", (socket) => {
       return;
     }
 
+    if (message.type === "rematchCancel") {
+      cancelRematch(room, client);
+      return;
+    }
+
     if (message.type === "rematchResponse") {
-      respondToRematch(room, message.accepted);
+      respondToRematch(room, client, message.accepted);
       return;
     }
 
@@ -135,14 +140,26 @@ function removeFromQueue(client: Client) {
 
 function requestRematch(room: Room, client: Client) {
   if (room.state.phase !== "gameOver" || !client.id) return;
+  if (room.rematchFrom && room.rematchFrom !== client.id) {
+    startRematch(room);
+    return;
+  }
+
   room.rematchFrom = client.id;
   send(client, { type: "rematchWaiting" });
   const opponent = room.clients.find((candidate) => candidate !== client);
   if (opponent) send(opponent, { type: "rematchChallenge", bet: room.state.bet });
 }
 
-function respondToRematch(room: Room, accepted: boolean) {
+function cancelRematch(room: Room, client: Client) {
+  if (room.state.phase !== "gameOver" || !client.id || room.rematchFrom !== client.id) return;
+  room.rematchFrom = undefined;
+  broadcast(room, { type: "rematchCancelled", by: client.id });
+}
+
+function respondToRematch(room: Room, client: Client, accepted: boolean) {
   if (!room.rematchFrom) return;
+  if (client.id === room.rematchFrom) return;
   if (!accepted) {
     room.rematchFrom = undefined;
     broadcast(room, { type: "rematchDeclined" });
@@ -150,6 +167,10 @@ function respondToRematch(room: Room, accepted: boolean) {
     return;
   }
 
+  startRematch(room);
+}
+
+function startRematch(room: Room) {
   room.rematchFrom = undefined;
   room.state = createGame("multiplayer", room.state.bet, BET_GOALS[room.state.bet] ?? 1500, ["Player 1", "Player 2"], {
     p1: room.clients.find((client) => client.id === "p1")?.customization ?? defaultCustomization,

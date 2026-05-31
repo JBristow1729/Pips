@@ -18,7 +18,7 @@ type RollVisual = {
   dice: Die[];
   faces: DieValue[];
 };
-type RematchDialog = "waiting" | "challenge" | null;
+type RematchDialog = "waiting" | "challenge" | "cancelled" | null;
 
 const foundPhrases = [
   "On the tavern floor!",
@@ -306,6 +306,9 @@ export function App() {
           setRematchDialog(null);
           returnMain();
         }
+        if (message.type === "rematchCancelled") {
+          setRematchDialog(message.by === playerIdRef.current ? null : "cancelled");
+        }
         if (message.type === "error") setMultiplayerError(message.message);
       },
       setMultiplayerError
@@ -405,6 +408,11 @@ export function App() {
       return;
     }
     connectionRef.current?.send({ type: "rematchRequest" });
+  };
+
+  const cancelRematch = () => {
+    connectionRef.current?.send({ type: "rematchCancel" });
+    setRematchDialog(null);
   };
 
   const answerRematch = (accepted: boolean) => {
@@ -616,7 +624,7 @@ export function App() {
       {leaveDialog && (
         <Dialog title="Are you sure you want to leave and forfeit your bet?" onYes={leaveGame} onNo={() => setLeaveDialog(false)} />
       )}
-      {rematchDialog === "waiting" && <Dialog title="Waiting for the other player..." />}
+      {rematchDialog === "waiting" && <Dialog title="Waiting for the other player..." onNo={cancelRematch} noLabel="Cancel" />}
       {rematchDialog === "challenge" && (
         <Dialog
           title="You have been challenged to a rematch, do you accept?"
@@ -626,6 +634,9 @@ export function App() {
         >
           {!canAffordRematch && <p>You need {bet}g to accept this rematch.</p>}
         </Dialog>
+      )}
+      {rematchDialog === "cancelled" && (
+        <Dialog title="That rematch invitation was cancelled." onNo={returnMain} noLabel="OK" />
       )}
       {rulesOpen && <RulesDialog onClose={() => setRulesOpen(false)} />}
       {customiseOpen && (

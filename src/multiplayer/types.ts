@@ -10,6 +10,7 @@ export type ServerMessage =
   | { type: "rematchChallenge"; bet: number }
   | { type: "rematchStarted"; state: GameState }
   | { type: "rematchDeclined" }
+  | { type: "rematchCancelled"; by: PlayerId }
   | { type: "error"; message: string };
 
 export type ClientMessage =
@@ -21,4 +22,5 @@ export type ClientMessage =
   | { type: "bank" }
   | { type: "forfeit" }
   | { type: "rematchRequest" }
+  | { type: "rematchCancel" }
   | { type: "rematchResponse"; accepted: boolean };
