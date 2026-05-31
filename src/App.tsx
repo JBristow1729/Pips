@@ -137,6 +137,13 @@ export function App() {
   );
   const controlsEnabled = Boolean(canControlTurn && !isRolling);
   const selectedScoreValid = Boolean(game && game.players[game.activePlayer].current > 0);
+  const hasRolledThisTurn = Boolean(
+    game &&
+      (game.phase !== "ready" ||
+        game.players[game.activePlayer].held > 0 ||
+        game.players[game.activePlayer].current > 0 ||
+        game.dice.length < 6)
+  );
   const animationTimersRef = useRef<number[]>([]);
 
   useEffect(() => {
@@ -322,6 +329,17 @@ export function App() {
       return;
     }
     animateToState(reduceGame(game, { type: "roll", playerId }));
+  };
+
+  const holdAndReroll = () => {
+    if (!game || game.phase !== "selecting" || !controlsEnabled || !selectedScoreValid) return;
+    if (game.mode === "multiplayer") {
+      connectionRef.current?.send({ type: "hold" });
+      connectionRef.current?.send({ type: "roll" });
+      return;
+    }
+    const heldState = reduceGame(game, { type: "hold", playerId });
+    animateToState(reduceGame(heldState, { type: "roll", playerId }));
   };
 
   const animateToState = (finalState: GameState) => {
@@ -554,15 +572,20 @@ export function App() {
                 </div>
               ) : (
                 <div className="game-actions" aria-label="Turn actions">
-                  <MenuButton disabled={!controlsEnabled || game.phase !== "ready"} onClick={roll}>
-                    Roll
-                  </MenuButton>
-                  <MenuButton disabled={!controlsEnabled || !selectedScoreValid} onClick={() => sendAction("hold")}>
-                    Hold
-                  </MenuButton>
-                  <MenuButton disabled={!controlsEnabled || !selectedScoreValid} onClick={() => sendAction("bank")}>
-                    Bank
-                  </MenuButton>
+                  {hasRolledThisTurn ? (
+                    <>
+                      <MenuButton disabled={!controlsEnabled || !selectedScoreValid} onClick={holdAndReroll}>
+                        Hold and Reroll
+                      </MenuButton>
+                      <MenuButton disabled={!controlsEnabled || !selectedScoreValid} onClick={() => sendAction("bank")}>
+                        Bank and Pass
+                      </MenuButton>
+                    </>
+                  ) : (
+                    <MenuButton disabled={!controlsEnabled || game.phase !== "ready"} onClick={roll}>
+                      Roll
+                    </MenuButton>
+                  )}
                 </div>
               )}
             </section>
@@ -572,7 +595,7 @@ export function App() {
     }
 
     return null;
-  }, [screen, gold, mode, bet, goal, canAfford, canAffordRematch, game, controlsEnabled, selectedScoreValid, multiplayerError, playerId, isMultiplayer, isMyTurn, isRolling, rollVisual, customizationInventory, waitingCounts]);
+  }, [screen, gold, mode, bet, goal, canAfford, canAffordRematch, game, controlsEnabled, selectedScoreValid, hasRolledThisTurn, multiplayerError, playerId, isMultiplayer, isMyTurn, isRolling, rollVisual, customizationInventory, waitingCounts]);
 
   function selectMode(nextMode: Mode) {
     setMode(nextMode);
