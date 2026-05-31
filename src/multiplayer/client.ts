@@ -6,6 +6,46 @@ export type MultiplayerConnection = {
   close: () => void;
 };
 
+export function watchMultiplayerWaitingCounts(
+  onCounts: (counts: Record<number, number>) => void,
+  onError: (message: string) => void
+): MultiplayerConnection {
+  const url = getMultiplayerUrl();
+  if (!url) {
+    return {
+      send() {
+        return undefined;
+      },
+      close() {
+        return undefined;
+      }
+    };
+  }
+  const socket = new WebSocket(url);
+
+  socket.addEventListener("open", () => {
+    socket.send(JSON.stringify({ type: "watchWaitingCounts" } satisfies ClientMessage));
+  });
+
+  socket.addEventListener("message", (event) => {
+    const message = JSON.parse(event.data) as ServerMessage;
+    if (message.type === "waitingCounts") onCounts(message.counts);
+  });
+
+  socket.addEventListener("error", () => {
+    onError("Could not load multiplayer waiting counts.");
+  });
+
+  return {
+    send(message) {
+      if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(message));
+    },
+    close() {
+      socket.close();
+    }
+  };
+}
+
 export function connectMultiplayer(
   bet: number,
   goal: number,

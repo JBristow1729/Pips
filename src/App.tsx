@@ -9,7 +9,7 @@ import { chooseAiDice, shouldAiBank } from "./game/ai";
 import { createGame, reduceGame } from "./game/gameState";
 import { BET_GOALS, type GameState, type Mode, type PlayerId } from "./game/types";
 import type { Die, DieValue } from "./game/types";
-import { connectMultiplayer, type MultiplayerConnection } from "./multiplayer/client";
+import { connectMultiplayer, watchMultiplayerWaitingCounts, type MultiplayerConnection } from "./multiplayer/client";
 import { createRandomCustomization, readCustomizationInventory, writeCustomizationInventory, type DiceCustomizationInventory } from "./customization/diceCustomization";
 import { changeWallet, readWallet } from "./storage/wallet";
 
@@ -18,6 +18,7 @@ type RollVisual = {
   dice: Die[];
   faces: DieValue[];
 };
+type RematchDialog = "waiting" | "challenge" | null;
 
 const foundPhrases = [
   "On the tavern floor!",
@@ -112,16 +113,29 @@ export function App() {
   const [isRolling, setIsRolling] = useState(false);
   const [rollVisual, setRollVisual] = useState<RollVisual | null>(null);
   const [multiplayerError, setMultiplayerError] = useState("");
+  const [waitingCounts, setWaitingCounts] = useState<Record<number, number>>({});
+  const [rematchDialog, setRematchDialog] = useState<RematchDialog>(null);
   const connectionRef = useRef<MultiplayerConnection | null>(null);
+  const waitingCountsRef = useRef<MultiplayerConnection | null>(null);
   const resolvedGameRef = useRef(false);
   const playerIdRef = useRef<PlayerId>("p1");
   const aiTimersRef = useRef<number[]>([]);
   const aiBusyRef = useRef(false);
   const goal = BET_GOALS[bet];
   const canAfford = gold >= bet;
+  const nextGameGold =
+    game?.phase === "gameOver" && bet > 0 && !resolvedGameRef.current
+      ? gold + (game.winner === playerId ? bet : -bet)
+      : gold;
+  const canAffordRematch = nextGameGold >= bet;
   const isMultiplayer = mode === "multiplayer";
   const isMyTurn = game?.activePlayer === playerId;
-  const controlsEnabled = Boolean(game && game.phase !== "gameOver" && !isRolling && (!isMultiplayer || isMyTurn));
+  const canControlTurn = Boolean(
+    game &&
+      game.phase !== "gameOver" &&
+      (game.mode === "singleplayer" ? game.activePlayer === "p1" : game.activePlayer === playerId)
+  );
+  const controlsEnabled = Boolean(canControlTurn && !isRolling);
   const selectedScoreValid = Boolean(game && game.players[game.activePlayer].current > 0);
   const animationTimersRef = useRef<number[]>([]);
 
@@ -146,8 +160,26 @@ export function App() {
     return () => {
       clearAnimationTimers();
       clearAiTimers();
+      waitingCountsRef.current?.close();
+      connectionRef.current?.close();
     };
   }, []);
+
+  useEffect(() => {
+    waitingCountsRef.current?.close();
+    waitingCountsRef.current = null;
+    if (screen !== "bet" || mode !== "multiplayer") return;
+
+    waitingCountsRef.current = watchMultiplayerWaitingCounts(
+      (counts) => setWaitingCounts(counts),
+      () => setWaitingCounts({})
+    );
+
+    return () => {
+      waitingCountsRef.current?.close();
+      waitingCountsRef.current = null;
+    };
+  }, [screen, mode]);
 
   useEffect(() => {
     if (!game || isRolling || game.mode !== "singleplayer" || game.phase === "gameOver" || game.activePlayer !== "p2") {
@@ -217,6 +249,7 @@ export function App() {
   }, [game, bet]);
 
   const startSingleplayer = () => {
+    if (gold < bet) return;
     resolvedGameRef.current = false;
     setPlayerId("p1");
     setGame(createGame("singleplayer", bet, goal, ["You", "Computer"], { p1: customizationInventory.equipped, p2: createRandomCustomization() }));
@@ -226,6 +259,9 @@ export function App() {
   const startMultiplayer = () => {
     setMultiplayerError("");
     setScreen("matchmaking");
+    setRematchDialog(null);
+    waitingCountsRef.current?.close();
+    waitingCountsRef.current = null;
     connectionRef.current?.close();
     connectionRef.current = connectMultiplayer(
       bet,
@@ -233,6 +269,7 @@ export function App() {
       customizationInventory.equipped,
       (message) => {
         if (message.type === "matched") {
+          resolvedGameRef.current = false;
           setPlayerId(message.playerId);
           playerIdRef.current = message.playerId;
           setGame(localizeNames(message.state, message.playerId));
@@ -248,6 +285,20 @@ export function App() {
             return localized;
           });
         }
+        if (message.type === "rematchWaiting") setRematchDialog("waiting");
+        if (message.type === "rematchChallenge") setRematchDialog("challenge");
+        if (message.type === "rematchStarted") {
+          resolvedGameRef.current = false;
+          setRematchDialog(null);
+          setRollVisual(null);
+          setIsRolling(false);
+          setGame(localizeNames(message.state, playerIdRef.current));
+          setScreen("game");
+        }
+        if (message.type === "rematchDeclined") {
+          setRematchDialog(null);
+          returnMain();
+        }
         if (message.type === "error") setMultiplayerError(message.message);
       },
       setMultiplayerError
@@ -256,6 +307,7 @@ export function App() {
 
   const sendAction = (type: "roll" | "hold" | "bank" | "forfeit", dieId?: string) => {
     if (!game) return;
+    if (type !== "forfeit" && !canControlTurn) return;
     if (game.mode === "multiplayer") {
       connectionRef.current?.send(dieId ? { type: "toggleDie", dieId } : { type });
       return;
@@ -316,6 +368,7 @@ export function App() {
   };
 
   const returnMain = () => {
+    setRematchDialog(null);
     connectionRef.current?.close();
     connectionRef.current = null;
     setGame(null);
@@ -325,6 +378,21 @@ export function App() {
     aiBusyRef.current = false;
     setScreen("main");
     setGold(readWallet());
+  };
+
+  const requestRematch = () => {
+    if (!game || !canAffordRematch) return;
+    if (game.mode === "singleplayer") {
+      startSingleplayer();
+      return;
+    }
+    connectionRef.current?.send({ type: "rematchRequest" });
+  };
+
+  const answerRematch = (accepted: boolean) => {
+    if (accepted && !canAffordRematch) return;
+    connectionRef.current?.send({ type: "rematchResponse", accepted });
+    if (accepted) setRematchDialog(null);
   };
 
   const spendGold = (amount: number) => {
@@ -374,7 +442,6 @@ export function App() {
           <section className="bet-panel">
             <div className="panel-kicker">Stakes</div>
             <h2>Select your bet</h2>
-            <p className="panel-copy">{mode === "singleplayer" ? "Start a private round against the house." : "Enter matchmaking for a matching wager."}</p>
             <div className="bet-slider-wrap">
               <label htmlFor="bet-slider">Select Bet</label>
               <div className="bet-slider-shell">
@@ -393,10 +460,15 @@ export function App() {
                 </output>
               </div>
             </div>
-            <div className="goal-plaque">Goal: {goal}</div>
-            <MenuButton disabled={!canAfford} onClick={mode === "singleplayer" ? startSingleplayer : startMultiplayer}>
-              Play
-            </MenuButton>
+            <p className={`waiting-count ${mode === "singleplayer" ? "waiting-count-empty" : ""}`} aria-hidden={mode === "singleplayer"}>
+              {mode === "multiplayer" ? formatWaitingCount(waitingCounts[bet] ?? 0) : "No players awaiting match"}
+            </p>
+            <div className="bet-footer">
+              <div className="goal-plaque">Goal: {goal}</div>
+              <MenuButton disabled={!canAfford} onClick={mode === "singleplayer" ? startSingleplayer : startMultiplayer}>
+                Play
+              </MenuButton>
+            </div>
           </section>
           <MenuButton variant="small" className="back-button" onClick={() => setScreen("main")} aria-label="Back">
             Back
@@ -474,7 +546,12 @@ export function App() {
                 ))}
               </div>
               {game.phase === "gameOver" ? (
-                <MenuButton onClick={returnMain}>Main Menu</MenuButton>
+                <div className="game-actions game-over-actions" aria-label="Game over actions">
+                  <MenuButton disabled={!canAffordRematch} onClick={requestRematch}>
+                    Rematch
+                  </MenuButton>
+                  <MenuButton onClick={returnMain}>Main Menu</MenuButton>
+                </div>
               ) : (
                 <div className="game-actions" aria-label="Turn actions">
                   <MenuButton disabled={!controlsEnabled || game.phase !== "ready"} onClick={roll}>
@@ -495,7 +572,7 @@ export function App() {
     }
 
     return null;
-  }, [screen, gold, mode, bet, goal, canAfford, game, controlsEnabled, selectedScoreValid, multiplayerError, playerId, isMultiplayer, isMyTurn, isRolling, rollVisual, customizationInventory]);
+  }, [screen, gold, mode, bet, goal, canAfford, canAffordRematch, game, controlsEnabled, selectedScoreValid, multiplayerError, playerId, isMultiplayer, isMyTurn, isRolling, rollVisual, customizationInventory, waitingCounts]);
 
   function selectMode(nextMode: Mode) {
     setMode(nextMode);
@@ -515,6 +592,17 @@ export function App() {
       )}
       {leaveDialog && (
         <Dialog title="Are you sure you want to leave and forfeit your bet?" onYes={leaveGame} onNo={() => setLeaveDialog(false)} />
+      )}
+      {rematchDialog === "waiting" && <Dialog title="Waiting for the other player..." />}
+      {rematchDialog === "challenge" && (
+        <Dialog
+          title="You have been challenged to a rematch, do you accept?"
+          onYes={() => answerRematch(true)}
+          onNo={() => answerRematch(false)}
+          yesDisabled={!canAffordRematch}
+        >
+          {!canAffordRematch && <p>You need {bet}g to accept this rematch.</p>}
+        </Dialog>
       )}
       {rulesOpen && <RulesDialog onClose={() => setRulesOpen(false)} />}
       {customiseOpen && (
@@ -566,4 +654,10 @@ function localizeMessage(state: GameState, self: PlayerId) {
 function getBetBubbleStyle(bet: number) {
   const ratio = bet / 30;
   return { left: `calc(16px + ${ratio * 100}% - ${ratio * 32}px)` };
+}
+
+function formatWaitingCount(count: number) {
+  if (count === 0) return "No players awaiting match";
+  if (count === 1) return "1 Player awaiting match";
+  return `${count} Players awaiting match`;
 }
