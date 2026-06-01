@@ -32,6 +32,11 @@ export function playRoll() {
   }
 }
 
+export function playWarning() {
+  tone(760, 0.08, "sawtooth", 0.045);
+  window.setTimeout(() => tone(520, 0.08, "sawtooth", 0.035), 90);
+}
+
 export function setMuted(value: boolean) {
   muted = value;
 }
