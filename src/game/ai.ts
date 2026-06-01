@@ -110,7 +110,8 @@ export function shouldAiBank(state: GameState): boolean {
   const ai = state.players.p2;
   const human = state.players.p1;
   const turnScore = ai.held + ai.current;
-  if (ai.total + turnScore >= state.goal) return true;
+  const aiEffectiveTotal = ai.total + turnScore;
+  if (aiEffectiveTotal >= state.goal) return true;
 
   const selectedCount = state.dice.filter((die) => die.selected).length;
   const diceAfterChoice = remainingDiceCount(state.dice.length, selectedCount);
@@ -119,19 +120,22 @@ export function shouldAiBank(state: GameState): boolean {
   const difficulty = aiDifficultyForBet(state.bet);
   const config = AI_CONFIGS[difficulty];
   const futureValue = expectedContinuationBonus(diceAfterChoice, turnScore);
-  const scoreGap = human.total - ai.total;
+  const scoreGap = human.total - aiEffectiveTotal;
+  const closeScoreMargin = Math.max(150, state.goal * 0.08);
   const playerNearWin = state.goal - human.total <= Math.max(250, state.goal * 0.08);
-  const aiNearWin = state.goal - ai.total <= Math.max(350, state.goal * 0.12);
+  const aiNearWin = state.goal - aiEffectiveTotal <= Math.max(350, state.goal * 0.12);
+  const hasCaughtUpEnough = scoreGap <= closeScoreMargin;
   const riskMultiplier =
     1 +
     (scoreGap / state.goal) * config.riskResponse +
-    (playerNearWin ? config.endgameUrgency : 0) +
+    (playerNearWin && !hasCaughtUpEnough ? config.endgameUrgency : 0) +
     (aiNearWin ? config.endgameUrgency * 0.4 : 0);
-  const leadConservation = Math.max(0, ai.total - human.total) * (0.06 + config.expectedWeight * 0.04);
+  const leadConservation = Math.max(0, aiEffectiveTotal - human.total) * (0.06 + config.expectedWeight * 0.04);
   const adjustedFutureValue = futureValue * Math.max(0.3, riskMultiplier) - leadConservation + config.bankBias;
   const bankFloor = BANK_FLOOR_BY_DICE[diceAfterChoice] ?? 500;
 
-  if (playerNearWin && turnScore < state.goal - ai.total) return false;
+  if (futureValue <= 0 && hasCaughtUpEnough && turnScore >= bankFloor) return true;
+  if (playerNearWin && aiEffectiveTotal + closeScoreMargin < human.total) return false;
   return turnScore >= bankFloor && adjustedFutureValue <= 0;
 }
 
