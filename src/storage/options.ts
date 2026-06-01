@@ -5,7 +5,31 @@ export type PlayerOptions = {
 };
 
 const storageKey = "tavern-dice-options";
-const blockedWords = ["slur", "racist", "nazi"];
+const blockedWords = [
+  "arse",
+  "asshole",
+  "bastard",
+  "bitch",
+  "bollock",
+  "bullshit",
+  "crap",
+  "cunt",
+  "damn",
+  "dick",
+  "douche",
+  "fag",
+  "fuck",
+  "hitler",
+  "kkk",
+  "nazi",
+  "prick",
+  "racist",
+  "shit",
+  "slur",
+  "twat",
+  "wanker",
+  "whore"
+];
 export const defaultOptions: PlayerOptions = {
   username: "Player",
   music: false,
@@ -20,6 +44,10 @@ export function validateUsername(username: string) {
   const normalized = value.toLowerCase().replace(/\s+/g, "");
   if (blockedWords.some((word) => normalized.includes(word))) return "Choose a different username.";
   return "";
+}
+
+export function isDefaultUsername(username: string) {
+  return username.trim().toLowerCase() === defaultOptions.username.toLowerCase();
 }
 
 export function readOptions(): PlayerOptions {

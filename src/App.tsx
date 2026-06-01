@@ -12,7 +12,7 @@ import type { Die, DieValue } from "./game/types";
 import { connectMultiplayerLobby, type MultiplayerConnection } from "./multiplayer/client";
 import type { LobbyState, PublicLobby, ServerMessage } from "./multiplayer/types";
 import { createRandomCustomization, readCustomizationInventory, writeCustomizationInventory, type DiceCustomizationInventory } from "./customization/diceCustomization";
-import { readOptions, validateUsername, writeOptions, type PlayerOptions } from "./storage/options";
+import { isDefaultUsername, readOptions, validateUsername, writeOptions, type PlayerOptions } from "./storage/options";
 import { changeWallet, readWallet } from "./storage/wallet";
 
 type Screen = "main" | "bet" | "multiplayer" | "host" | "join" | "game";
@@ -177,6 +177,7 @@ export function App() {
   const [rulesOpen, setRulesOpen] = useState(false);
   const [customiseOpen, setCustomiseOpen] = useState(false);
   const [optionsOpen, setOptionsOpen] = useState(false);
+  const [defaultNameWarning, setDefaultNameWarning] = useState(false);
   const [options, setOptions] = useState<PlayerOptions>(() => readOptions());
   const [customizationInventory, setCustomizationInventory] = useState<DiceCustomizationInventory>(() => readCustomizationInventory());
   const [foundGold, setFoundGold] = useState<string | null>(null);
@@ -883,6 +884,10 @@ export function App() {
   }, [screen, gold, bet, goal, canAfford, canAffordRematch, game, controlsEnabled, selectedScoreValid, hasRolledThisTurn, multiplayerError, playerId, isMyTurn, isRolling, rollVisual, customizationInventory, options, lobby, publicLobbies, joinCode, turnTimer, timerSecondsLeft]);
 
   function selectMode(nextMode: Mode) {
+    if (nextMode === "multiplayer" && isDefaultUsername(options.username)) {
+      setDefaultNameWarning(true);
+      return;
+    }
     setScreen(nextMode === "singleplayer" ? "bet" : "multiplayer");
   }
 
@@ -912,6 +917,19 @@ export function App() {
         <Dialog title="That rematch invitation was cancelled." onNo={returnMain} noLabel="OK" />
       )}
       {rulesOpen && <RulesDialog onClose={() => setRulesOpen(false)} />}
+      {defaultNameWarning && (
+        <Dialog
+          title="Choose a username before multiplayer."
+          onNo={() => {
+            setDefaultNameWarning(false);
+            setScreen("main");
+            setOptionsOpen(true);
+          }}
+          noLabel="OK"
+        >
+          <p>Your profile is still using the default name.</p>
+        </Dialog>
+      )}
       {optionsOpen && <OptionsDialog options={options} onApply={applyOptions} onClose={() => setOptionsOpen(false)} />}
       {privateJoinFailed && (
         <Dialog
