@@ -67,4 +67,18 @@ describe("shouldAiBank", () => {
       }
     })).toBe(false);
   });
+
+  it("accounts for held turn score when deciding whether the AI is still behind", () => {
+    const state = aiSelectionState(30, [1, 2]);
+    expect(shouldAiBank({
+      ...state,
+      goal: 2000,
+      dice: state.dice.map((die, index) => ({ ...die, selected: index === 0 })),
+      players: {
+        ...state.players,
+        p1: { ...state.players.p1, total: 1950 },
+        p2: { ...state.players.p2, total: 0, held: 1850, current: 50 }
+      }
+    })).toBe(true);
+  });
 });
