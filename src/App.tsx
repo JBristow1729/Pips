@@ -586,10 +586,12 @@ export function App() {
                   {hasRolledThisTurn ? (
                     <>
                       <MenuButton disabled={!controlsEnabled || !selectedScoreValid} onClick={holdAndReroll}>
-                        Hold and Reroll
+                        <span className="action-label-full">Hold and Reroll</span>
+                        <span className="action-label-compact">Hold</span>
                       </MenuButton>
                       <MenuButton disabled={!controlsEnabled || !selectedScoreValid} onClick={() => sendAction("bank")}>
-                        Bank and Pass
+                        <span className="action-label-full">Bank and Pass</span>
+                        <span className="action-label-compact">Bank</span>
                       </MenuButton>
                     </>
                   ) : (
