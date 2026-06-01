@@ -4,16 +4,18 @@ import { CustomiseDialog } from "./components/CustomiseDialog";
 import { Dialog } from "./components/Dialog";
 import { MenuButton } from "./components/MenuButton";
 import { Scoreboard } from "./components/Scoreboard";
-import { playRoll, playTap, setMuted } from "./audio/sounds";
+import { playRoll, playTap, playWarning, setMuted } from "./audio/sounds";
 import { chooseAiDice, shouldAiBank } from "./game/ai";
 import { createGame, reduceGame } from "./game/gameState";
 import { BET_GOALS, type GameState, type Mode, type PlayerId } from "./game/types";
 import type { Die, DieValue } from "./game/types";
-import { connectMultiplayer, watchMultiplayerWaitingCounts, type MultiplayerConnection } from "./multiplayer/client";
+import { connectMultiplayerLobby, type MultiplayerConnection } from "./multiplayer/client";
+import type { LobbyState, PublicLobby, ServerMessage } from "./multiplayer/types";
 import { createRandomCustomization, readCustomizationInventory, writeCustomizationInventory, type DiceCustomizationInventory } from "./customization/diceCustomization";
+import { readOptions, validateUsername, writeOptions, type PlayerOptions } from "./storage/options";
 import { changeWallet, readWallet } from "./storage/wallet";
 
-type Screen = "main" | "bet" | "matchmaking" | "game";
+type Screen = "main" | "bet" | "multiplayer" | "host" | "join" | "game";
 type RollMotion = {
   axisX: string;
   axisY: string;
@@ -27,6 +29,7 @@ type RollVisual = {
   stopped: boolean[];
 };
 type RematchDialog = "waiting" | "challenge" | "cancelled" | null;
+type TurnTimer = { playerId: PlayerId; endsAt: number; durationMs: number };
 
 const rollBaseDuration = 1.1;
 const rollStopStagger = 0.2;
@@ -99,9 +102,73 @@ function RulesDialog({ onClose }: { onClose: () => void }) {
   );
 }
 
+function OptionsDialog({ options, onApply, onClose }: { options: PlayerOptions; onApply: (options: PlayerOptions) => void; onClose: () => void }) {
+  const [draft, setDraft] = useState(options);
+  const usernameError = validateUsername(draft.username);
+  const updateUsername = (value: string) => {
+    setDraft((current) => ({ ...current, username: value }));
+  };
+  const updateSfx = (value: boolean) => {
+    setDraft((current) => ({ ...current, sfx: value }));
+  };
+
+  return (
+    <div className="dialog-backdrop">
+      <section className="options-dialog" role="dialog" aria-modal="true" aria-labelledby="options-title">
+        <div className="customise-heading">
+          <div>
+            <div className="panel-kicker">Table Rules</div>
+            <h2 id="options-title">Options</h2>
+          </div>
+        </div>
+        <div className="options-list">
+          <label className="option-field">
+            <span>Username</span>
+            <input
+              value={draft.username}
+              maxLength={16}
+              onChange={(event) => updateUsername(event.currentTarget.value)}
+              aria-invalid={Boolean(usernameError)}
+            />
+            {usernameError && <small>{usernameError}</small>}
+          </label>
+          <label className="option-check disabled">
+            <input type="checkbox" checked={false} disabled readOnly />
+            <span>Music</span>
+          </label>
+          <label className="option-check">
+            <input
+              type="checkbox"
+              checked={draft.sfx}
+              onChange={(event) => updateSfx(event.currentTarget.checked)}
+            />
+            <span>SFX</span>
+          </label>
+        </div>
+        <div className="customise-actions">
+          <MenuButton variant="small" onClick={onClose}>
+            Cancel
+          </MenuButton>
+          <MenuButton variant="small" disabled={Boolean(usernameError)} onClick={() => onApply({ ...draft, username: draft.username.trim(), music: false })}>
+            Apply
+          </MenuButton>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function TurnTimerPanel({ secondsLeft }: { secondsLeft: number }) {
+  return (
+    <div className={`turn-timer ${secondsLeft <= 5 ? "urgent" : ""}`} aria-live="polite">
+      <span className="timer-glass" aria-hidden="true" />
+      <strong key={secondsLeft}>{secondsLeft}s</strong>
+    </div>
+  );
+}
+
 export function App() {
   const [screen, setScreen] = useState<Screen>("main");
-  const [mode, setMode] = useState<Mode>("singleplayer");
   const [bet, setBet] = useState(0);
   const [gold, setGold] = useState(() => readWallet());
   const [game, setGame] = useState<GameState | null>(null);
@@ -109,16 +176,22 @@ export function App() {
   const [leaveDialog, setLeaveDialog] = useState(false);
   const [rulesOpen, setRulesOpen] = useState(false);
   const [customiseOpen, setCustomiseOpen] = useState(false);
+  const [optionsOpen, setOptionsOpen] = useState(false);
+  const [options, setOptions] = useState<PlayerOptions>(() => readOptions());
   const [customizationInventory, setCustomizationInventory] = useState<DiceCustomizationInventory>(() => readCustomizationInventory());
   const [foundGold, setFoundGold] = useState<string | null>(null);
-  const [muted, setMutedState] = useState(false);
   const [isRolling, setIsRolling] = useState(false);
   const [rollVisual, setRollVisual] = useState<RollVisual | null>(null);
   const [multiplayerError, setMultiplayerError] = useState("");
-  const [waitingCounts, setWaitingCounts] = useState<Record<number, number>>({});
+  const [lobby, setLobby] = useState<LobbyState | null>(null);
+  const [publicLobbies, setPublicLobbies] = useState<PublicLobby[]>([]);
+  const [joinCode, setJoinCode] = useState("");
+  const [privateJoinFailed, setPrivateJoinFailed] = useState(false);
+  const [turnTimer, setTurnTimer] = useState<TurnTimer | null>(null);
+  const [timerNow, setTimerNow] = useState(() => Date.now());
+  const [lastWarningSecond, setLastWarningSecond] = useState<number | null>(null);
   const [rematchDialog, setRematchDialog] = useState<RematchDialog>(null);
   const connectionRef = useRef<MultiplayerConnection | null>(null);
-  const waitingCountsRef = useRef<MultiplayerConnection | null>(null);
   const resolvedGameRef = useRef(false);
   const playerIdRef = useRef<PlayerId>("p1");
   const aiTimersRef = useRef<number[]>([]);
@@ -130,8 +203,8 @@ export function App() {
       ? gold + (game.winner === playerId ? bet : -bet)
       : gold;
   const canAffordRematch = nextGameGold >= bet;
-  const isMultiplayer = mode === "multiplayer";
   const isMyTurn = game?.activePlayer === playerId;
+  const timerSecondsLeft = turnTimer ? Math.max(0, Math.ceil((turnTimer.endsAt - timerNow) / 1000)) : 0;
   const canControlTurn = Boolean(
     game &&
       game.phase !== "gameOver" &&
@@ -158,8 +231,8 @@ export function App() {
   }, [screen, gold, foundGold]);
 
   useEffect(() => {
-    setMuted(muted);
-  }, [muted]);
+    setMuted(!options.sfx);
+  }, [options.sfx]);
 
   useEffect(() => {
     playerIdRef.current = playerId;
@@ -169,26 +242,26 @@ export function App() {
     return () => {
       clearAnimationTimers();
       clearAiTimers();
-      waitingCountsRef.current?.close();
       connectionRef.current?.close();
     };
   }, []);
 
   useEffect(() => {
-    waitingCountsRef.current?.close();
-    waitingCountsRef.current = null;
-    if (screen !== "bet" || mode !== "multiplayer") return;
+    if (screen !== "join") return;
+    const timer = window.setInterval(() => connectionRef.current?.send({ type: "listLobbies" }), 10_000);
+    return () => window.clearInterval(timer);
+  }, [screen]);
 
-    waitingCountsRef.current = watchMultiplayerWaitingCounts(
-      (counts) => setWaitingCounts(counts),
-      () => setWaitingCounts({})
-    );
+  useEffect(() => {
+    const timer = window.setInterval(() => setTimerNow(Date.now()), 250);
+    return () => window.clearInterval(timer);
+  }, []);
 
-    return () => {
-      waitingCountsRef.current?.close();
-      waitingCountsRef.current = null;
-    };
-  }, [screen, mode]);
+  useEffect(() => {
+    if (!turnTimer || !isMyTurn || timerSecondsLeft > 5 || timerSecondsLeft <= 0 || lastWarningSecond === timerSecondsLeft) return;
+    setLastWarningSecond(timerSecondsLeft);
+    playWarning();
+  }, [turnTimer, isMyTurn, timerSecondsLeft, lastWarningSecond]);
 
   useEffect(() => {
     if (!game || isRolling || game.mode !== "singleplayer" || game.phase === "gameOver" || game.activePlayer !== "p2") {
@@ -265,56 +338,83 @@ export function App() {
     setScreen("game");
   };
 
-  const startMultiplayer = () => {
+  const openLobbyConnection = () => {
     setMultiplayerError("");
-    setScreen("matchmaking");
-    setRematchDialog(null);
-    waitingCountsRef.current?.close();
-    waitingCountsRef.current = null;
     connectionRef.current?.close();
-    connectionRef.current = connectMultiplayer(
-      bet,
-      goal,
-      customizationInventory.equipped,
-      (message) => {
-        if (message.type === "matched") {
-          resolvedGameRef.current = false;
-          setPlayerId(message.playerId);
-          playerIdRef.current = message.playerId;
-          setGame(localizeNames(message.state, message.playerId));
-          setScreen("game");
+    connectionRef.current = connectMultiplayerLobby(handleMultiplayerMessage, setMultiplayerError);
+    return connectionRef.current;
+  };
+
+  const hostGame = () => {
+    const connection = openLobbyConnection();
+    setLobby(null);
+    setScreen("host");
+    connection.send({ type: "createLobby", username: options.username, bet, goal, public: false, customization: customizationInventory.equipped });
+  };
+
+  const openJoinMenu = () => {
+    const connection = openLobbyConnection();
+    setLobby(null);
+    setPublicLobbies([]);
+    setJoinCode("");
+    setScreen("join");
+    connection.send({ type: "listLobbies" });
+  };
+
+  const handleMultiplayerMessage = (message: ServerMessage) => {
+    if (message.type === "publicLobbies") setPublicLobbies(message.lobbies);
+    if (message.type === "lobby") {
+      setLobby(message.lobby);
+      setPlayerId(message.playerId);
+      playerIdRef.current = message.playerId;
+      setScreen("host");
+    }
+    if (message.type === "matched") {
+      resolvedGameRef.current = false;
+      setTurnTimer(null);
+      setPlayerId(message.playerId);
+      playerIdRef.current = message.playerId;
+      setGame(localizeNames(message.state, message.playerId));
+      setScreen("game");
+    }
+    if (message.type === "turnTimer") {
+      setTurnTimer(message);
+      setLastWarningSecond(null);
+      setTimerNow(Date.now());
+    }
+    if (message.type === "state") {
+      const localized = localizeNames(message.state, playerIdRef.current);
+      if (localized.phase === "gameOver") setTurnTimer(null);
+      setGame((current) => {
+        if (shouldAnimateIncomingRoll(current, localized)) {
+          animateToState(localized);
+          return current;
         }
-        if (message.type === "state") {
-          const localized = localizeNames(message.state, playerIdRef.current);
-          setGame((current) => {
-            if (shouldAnimateIncomingRoll(current, localized)) {
-              animateToState(localized);
-              return current;
-            }
-            return localized;
-          });
-        }
-        if (message.type === "rematchWaiting") setRematchDialog("waiting");
-        if (message.type === "rematchChallenge") setRematchDialog("challenge");
-        if (message.type === "rematchStarted") {
-          resolvedGameRef.current = false;
-          setRematchDialog(null);
-          setRollVisual(null);
-          setIsRolling(false);
-          setGame(localizeNames(message.state, playerIdRef.current));
-          setScreen("game");
-        }
-        if (message.type === "rematchDeclined") {
-          setRematchDialog(null);
-          returnMain();
-        }
-        if (message.type === "rematchCancelled") {
-          setRematchDialog(message.by === playerIdRef.current ? null : "cancelled");
-        }
-        if (message.type === "error") setMultiplayerError(message.message);
-      },
-      setMultiplayerError
-    );
+        return localized;
+      });
+    }
+    if (message.type === "rematchWaiting") setRematchDialog("waiting");
+    if (message.type === "rematchChallenge") setRematchDialog("challenge");
+    if (message.type === "rematchStarted") {
+      resolvedGameRef.current = false;
+      setRematchDialog(null);
+      setRollVisual(null);
+      setIsRolling(false);
+      setTurnTimer(null);
+      setGame(localizeNames(message.state, playerIdRef.current));
+      setScreen("game");
+    }
+    if (message.type === "rematchDeclined") {
+      setRematchDialog(null);
+      returnMain();
+    }
+    if (message.type === "rematchCancelled") {
+      setRematchDialog(message.by === playerIdRef.current ? null : "cancelled");
+    }
+    if (message.type === "error") {
+      if (message.message.includes("No lobby")) setPrivateJoinFailed(true);
+      setMultiplayerError(message.message);
+    }
   };
 
   const sendAction = (type: "roll" | "hold" | "bank" | "forfeit", dieId?: string) => {
@@ -396,6 +496,9 @@ export function App() {
     setRematchDialog(null);
     connectionRef.current?.close();
     connectionRef.current = null;
+    setLobby(null);
+    setPublicLobbies([]);
+    setTurnTimer(null);
     setGame(null);
     setRollVisual(null);
     setIsRolling(false);
@@ -441,6 +544,42 @@ export function App() {
     setCustomiseOpen(false);
   };
 
+  const applyOptions = (nextOptions: PlayerOptions) => {
+    writeOptions(nextOptions);
+    setOptions(nextOptions);
+    setOptionsOpen(false);
+  };
+
+  const updateLobbyConfig = (nextBet: number, nextPublic = lobby?.public ?? false) => {
+    connectionRef.current?.send({ type: "updateLobby", bet: nextBet, goal: BET_GOALS[nextBet], public: nextPublic });
+  };
+
+  const joinPrivateLobby = () => {
+    if (joinCode.length !== 4) return;
+    connectionRef.current?.send({ type: "joinLobby", username: options.username, code: joinCode, customization: customizationInventory.equipped });
+  };
+
+  const joinPublicLobby = (lobbyId: string) => {
+    connectionRef.current?.send({ type: "joinLobby", username: options.username, lobbyId, customization: customizationInventory.equipped });
+  };
+
+  const leaveLobby = () => {
+    connectionRef.current?.send({ type: "leaveLobby" });
+    connectionRef.current?.close();
+    connectionRef.current = null;
+    setLobby(null);
+    setScreen("multiplayer");
+  };
+
+  const backToMultiplayerMenu = () => {
+    connectionRef.current?.close();
+    connectionRef.current = null;
+    setLobby(null);
+    setPublicLobbies([]);
+    setMultiplayerError("");
+    setScreen("multiplayer");
+  };
+
   const content = useMemo(() => {
     if (screen === "main") {
       return (
@@ -455,6 +594,7 @@ export function App() {
             <MenuButton onClick={() => selectMode("singleplayer")}>Singleplayer</MenuButton>
             <MenuButton onClick={() => selectMode("multiplayer")}>Multiplayer</MenuButton>
             <MenuButton onClick={() => setCustomiseOpen(true)}>Customise</MenuButton>
+            <MenuButton onClick={() => setOptionsOpen(true)}>Options</MenuButton>
           </nav>
         </main>
       );
@@ -490,12 +630,10 @@ export function App() {
                 </output>
               </div>
             </div>
-            <p className={`waiting-count ${mode === "singleplayer" ? "waiting-count-empty" : ""}`} aria-hidden={mode === "singleplayer"}>
-              {mode === "multiplayer" ? formatWaitingCount(waitingCounts[bet] ?? 0) : "No players awaiting match"}
-            </p>
+            <p className="waiting-count waiting-count-empty" aria-hidden="true">No players awaiting match</p>
             <div className="bet-footer">
               <div className="goal-plaque">Goal: {goal}</div>
-              <MenuButton disabled={!canAfford} onClick={mode === "singleplayer" ? startSingleplayer : startMultiplayer}>
+              <MenuButton disabled={!canAfford} onClick={startSingleplayer}>
                 Play
               </MenuButton>
             </div>
@@ -507,25 +645,156 @@ export function App() {
       );
     }
 
-    if (screen === "matchmaking") {
+    if (screen === "multiplayer") {
       return (
-        <main className="menu-screen centered menu-matchmaking">
+        <main className="menu-screen menu-multiplayer">
+          <div className="hero-panel">
+            <h1>Tavern Dice</h1>
+          </div>
           <div className="top-bar" aria-label="Player wallet">
             <GoldDisplay gold={gold} />
           </div>
-          <section className="wait-panel">
+          <nav className="main-actions multiplayer-choice-actions" aria-label="Multiplayer options">
+            <MenuButton onClick={hostGame}>Host Game</MenuButton>
+            <MenuButton onClick={openJoinMenu}>Join Game</MenuButton>
+            {multiplayerError && <p className="error">{multiplayerError}</p>}
+          </nav>
+          <MenuButton variant="small" className="back-button" onClick={returnMain}>
+            Back
+          </MenuButton>
+        </main>
+      );
+    }
+
+    if (screen === "host" && lobby) {
+      const self = lobby.players.find((candidate) => candidate.id === playerId);
+      const isHost = Boolean(self?.isHost);
+      return (
+        <main className="menu-screen centered menu-lobby">
+          <div className="top-bar" aria-label="Player wallet">
+            <GoldDisplay gold={gold} />
+          </div>
+          <section className="lobby-panel">
+            <div className="lobby-code" aria-label={`Lobby code ${lobby.code}`}>{lobby.code}</div>
+            <div className="lobby-grid">
+              <section className="lobby-players" aria-label="Lobby players">
+                <div className="section-label">Players</div>
+                {["p1", "p2"].map((slot) => {
+                  const player = lobby.players.find((candidate) => candidate.id === slot);
+                  return (
+                    <div className={`lobby-player-card ${player?.ready ? "ready" : ""}`} key={slot}>
+                      <strong>{player?.username ?? "Awaiting player"}</strong>
+                      <span>{player ? `${player.isHost ? "Host - " : ""}${player.ready ? "Ready" : "Not Ready"}` : "Open seat"}</span>
+                    </div>
+                  );
+                })}
+              </section>
+              <section className={`lobby-config ${!isHost ? "locked" : ""}`} aria-label="Lobby settings">
+                <div className="section-label">Stakes</div>
+                <h2>Select your bet</h2>
+                <div className="bet-slider-wrap">
+                  <label htmlFor="lobby-bet-slider">Select Bet</label>
+                  <div className="bet-slider-shell">
+                    <input
+                      id="lobby-bet-slider"
+                      className="bet-slider"
+                      type="range"
+                      min="0"
+                      max="30"
+                      step="10"
+                      value={lobby.bet}
+                      disabled={!isHost}
+                      onChange={(event) => updateLobbyConfig(Number(event.currentTarget.value))}
+                    />
+                    <output className="bet-bubble" style={getBetBubbleStyle(lobby.bet)}>
+                      {lobby.bet}g
+                    </output>
+                  </div>
+                </div>
+                <label className="option-check public-toggle">
+                  <input
+                    type="checkbox"
+                    checked={lobby.public}
+                    disabled={!isHost}
+                    onChange={(event) => updateLobbyConfig(lobby.bet, event.currentTarget.checked)}
+                  />
+                  <span>Public</span>
+                </label>
+                <div className="goal-plaque">Goal: {lobby.goal}</div>
+              </section>
+            </div>
+            <div className="lobby-actions">
+              <MenuButton variant="small" onClick={leaveLobby}>Leave</MenuButton>
+              <MenuButton variant="small" onClick={() => connectionRef.current?.send({ type: "setReady", ready: !self?.ready })}>
+                {self?.ready ? "Not Ready" : "Ready"}
+              </MenuButton>
+            </div>
+          </section>
+        </main>
+      );
+    }
+
+    if (screen === "host") {
+      return (
+        <main className="menu-screen centered menu-lobby">
+          <div className="top-bar" aria-label="Player wallet">
+            <GoldDisplay gold={gold} />
+          </div>
+          <section className="wait-panel host-loading-panel">
             <div className="loading-sigil" aria-hidden="true" />
             <div className="panel-kicker">Noticeboard</div>
-            <h2>Finding a table...</h2>
-            <p className="panel-copy">Waiting for another player with the same bet.</p>
-            <div className="matchmaking-stats">
-              <span>Bet <strong>{bet}g</strong></span>
-              <span>Score <strong>{goal}</strong></span>
+            <h2>Preparing table...</h2>
+            {multiplayerError && <p className="error">{multiplayerError}</p>}
+          </section>
+          <MenuButton variant="small" className="back-button" onClick={backToMultiplayerMenu}>
+            Back
+          </MenuButton>
+        </main>
+      );
+    }
+
+    if (screen === "join") {
+      return (
+        <main className="menu-screen centered menu-lobby">
+          <div className="top-bar" aria-label="Player wallet">
+            <GoldDisplay gold={gold} />
+          </div>
+          <section className="join-panel">
+            <div className="private-join-header">
+              <span className="section-label">Private</span>
+              <label className="code-entry" aria-label="Private lobby code">
+                <input
+                  value={joinCode}
+                  maxLength={4}
+                  autoFocus
+                  onChange={(event) => setJoinCode(event.currentTarget.value.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 4))}
+                  autoComplete="off"
+                />
+                {[0, 1, 2, 3].map((index) => <span key={index}>{joinCode[index] ?? ""}</span>)}
+              </label>
+              <MenuButton variant="small" disabled={joinCode.length !== 4} onClick={joinPrivateLobby}>Join</MenuButton>
+            </div>
+            <div className="public-list-heading">
+              <span className="section-label">Public</span>
+              <MenuButton variant="small" onClick={() => connectionRef.current?.send({ type: "listLobbies" })}>Refresh</MenuButton>
+            </div>
+            <div className="public-lobby-list">
+              {publicLobbies.length === 0 && <p className="empty-lobbies">No public games are waiting.</p>}
+              {publicLobbies.map((publicLobby) => (
+                <article className="public-lobby-card" key={publicLobby.id}>
+                  <strong className="public-lobby-host">{publicLobby.host}</strong>
+                  <div className="public-lobby-meta">
+                    <span>{publicLobby.bet}g</span>
+                    <span>Goal {publicLobby.goal}</span>
+                  </div>
+                  <MenuButton variant="small" onClick={() => joinPublicLobby(publicLobby.id)}>Join</MenuButton>
+                </article>
+              ))}
             </div>
             {multiplayerError && <p className="error">{multiplayerError}</p>}
           </section>
-          <MenuButton variant="small" className="back-button" onClick={returnMain}>
-            Cancel
+          <MenuButton variant="small" className="back-button" onClick={backToMultiplayerMenu}>
+            Back
           </MenuButton>
         </main>
       );
@@ -557,6 +826,9 @@ export function App() {
                 <div className={`center-message ${game.phase === "gameOver" ? "winner" : ""}`} role="status" aria-live="polite">
                   {game.message}
                 </div>
+                {game.mode === "multiplayer" && isMyTurn && turnTimer?.playerId === playerId && game.phase !== "gameOver" && (
+                  <TurnTimerPanel secondsLeft={timerSecondsLeft} />
+                )}
               </div>
               <div className={`dice-tray dice-count-${renderedDice.length} ${isRolling ? "dice-tray-rolling" : ""}`} aria-label="Dice tray">
                 {renderedDice.map((die, index) => (
@@ -608,19 +880,15 @@ export function App() {
     }
 
     return null;
-  }, [screen, gold, mode, bet, goal, canAfford, canAffordRematch, game, controlsEnabled, selectedScoreValid, hasRolledThisTurn, multiplayerError, playerId, isMultiplayer, isMyTurn, isRolling, rollVisual, customizationInventory, waitingCounts]);
+  }, [screen, gold, bet, goal, canAfford, canAffordRematch, game, controlsEnabled, selectedScoreValid, hasRolledThisTurn, multiplayerError, playerId, isMyTurn, isRolling, rollVisual, customizationInventory, options, lobby, publicLobbies, joinCode, turnTimer, timerSecondsLeft]);
 
   function selectMode(nextMode: Mode) {
-    setMode(nextMode);
-    setScreen("bet");
+    setScreen(nextMode === "singleplayer" ? "bet" : "multiplayer");
   }
 
   return (
     <div className="app">
       {content}
-      <button className="mute-toggle" onClick={() => setMutedState((value) => !value)} aria-label="Toggle mute">
-        {muted ? "Sound Off" : "Sound On"}
-      </button>
       {foundGold && (
         <Dialog title="You found 10g..." onNo={() => setFoundGold(null)} noLabel="Nice">
           <p>{foundGold}</p>
@@ -644,6 +912,18 @@ export function App() {
         <Dialog title="That rematch invitation was cancelled." onNo={returnMain} noLabel="OK" />
       )}
       {rulesOpen && <RulesDialog onClose={() => setRulesOpen(false)} />}
+      {optionsOpen && <OptionsDialog options={options} onApply={applyOptions} onClose={() => setOptionsOpen(false)} />}
+      {privateJoinFailed && (
+        <Dialog
+          title="No private game exists for that code."
+          onNo={() => {
+            setPrivateJoinFailed(false);
+            setMultiplayerError("");
+            setScreen("multiplayer");
+          }}
+          noLabel="OK"
+        />
+      )}
       {customiseOpen && (
         <CustomiseDialog
           gold={gold}
@@ -663,7 +943,7 @@ function localizeNames(state: GameState, self: PlayerId): GameState {
   const players = {
     ...state.players,
     [self]: { ...state.players[self], name: "You" },
-    [opponent]: { ...state.players[opponent], name: "Opponent" }
+    [opponent]: { ...state.players[opponent] }
   };
   return {
     ...state,
@@ -680,12 +960,14 @@ function shouldAnimateIncomingRoll(current: GameState | null, incoming: GameStat
 
 function localizeMessage(state: GameState, self: PlayerId) {
   const activeIsSelf = state.activePlayer === self;
-  if (state.phase === "ready") return activeIsSelf ? "Your turn" : "Opponent's turn";
-  if (state.phase === "selecting") return activeIsSelf ? "You rolled" : "Opponent rolled";
-  if (state.phase === "bust") return activeIsSelf ? "BUST" : "Opponent busted";
+  const opponent = self === "p1" ? "p2" : "p1";
+  const opponentName = state.players[opponent].name;
+  if (state.phase === "ready") return activeIsSelf ? "Your turn" : `${opponentName}'s turn`;
+  if (state.phase === "selecting") return activeIsSelf ? "You rolled" : `${opponentName} rolled`;
+  if (state.phase === "bust") return activeIsSelf ? "BUST" : `${opponentName} busted`;
   if (state.phase === "gameOver") {
     if (state.winner === self) return "You win!";
-    if (state.winner) return "Opponent wins!";
+    if (state.winner) return `${state.players[state.winner].name} wins!`;
   }
   return state.message;
 }

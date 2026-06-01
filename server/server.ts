@@ -3,28 +3,40 @@ import { WebSocketServer, type WebSocket } from "ws";
 import { createGame, reduceGame } from "../src/game/gameState";
 import { defaultCustomization, type DiceCustomization } from "../src/customization/diceCustomization";
 import { BET_GOALS, type ClientAction, type GameState, type PlayerId } from "../src/game/types";
-import type { ClientMessage, ServerMessage } from "../src/multiplayer/types";
+import type { ClientMessage, LobbyState, PublicLobby, ServerMessage } from "../src/multiplayer/types";
 
 type Client = {
   socket: WebSocket;
   id?: PlayerId;
   roomId?: string;
   bet?: number;
+  username?: string;
   customization?: DiceCustomization;
   watchingCounts?: boolean;
+  watchingLobbies?: boolean;
 };
 
 type Room = {
   id: string;
+  code: string;
   clients: Client[];
-  state: GameState;
+  hostId: PlayerId;
+  bet: number;
+  goal: number;
+  public: boolean;
+  ready: Partial<Record<PlayerId, boolean>>;
+  state?: GameState;
   rematchFrom?: PlayerId;
+  turnTimer?: ReturnType<typeof setTimeout>;
+  turnDeadline?: number;
 };
 
 const port = Number.parseInt(process.env.PORT ?? "1999", 10);
+const turnDurationMs = 30_000;
 const waiting = new Map<number, Client[]>();
 const rooms = new Map<string, Room>();
 const countWatchers = new Set<Client>();
+const lobbyWatchers = new Set<Client>();
 const httpServer = createServer((_, response) => {
   response.writeHead(200, { "content-type": "text/plain" });
   response.end("Tavern Dice multiplayer server is running.\n");
@@ -36,6 +48,7 @@ wss.on("connection", (socket) => {
 
   socket.on("message", (raw) => {
     const message = JSON.parse(String(raw)) as ClientMessage;
+
     if (message.type === "watchWaitingCounts") {
       client.watchingCounts = true;
       countWatchers.add(client);
@@ -43,17 +56,57 @@ wss.on("connection", (socket) => {
       return;
     }
 
+    if (message.type === "listLobbies") {
+      client.watchingLobbies = true;
+      lobbyWatchers.add(client);
+      sendPublicLobbies(client);
+      return;
+    }
+
     if (message.type === "join") {
       client.watchingCounts = false;
       countWatchers.delete(client);
       client.customization = message.customization;
+      client.username = "Player";
       joinQueue(client, message.bet);
+      return;
+    }
+
+    if (message.type === "createLobby") {
+      client.customization = message.customization;
+      client.username = cleanUsername(message.username);
+      createLobby(client, message.bet, message.goal, message.public);
+      return;
+    }
+
+    if (message.type === "joinLobby") {
+      client.customization = message.customization;
+      client.username = cleanUsername(message.username);
+      joinLobby(client, message);
       return;
     }
 
     const room = client.roomId ? rooms.get(client.roomId) : undefined;
     if (!room || !client.id) {
       send(client, { type: "error", message: "You are not in a game room yet." });
+      return;
+    }
+
+    if (message.type === "updateLobby") {
+      updateLobby(room, client, message);
+      return;
+    }
+
+    if (message.type === "setReady") {
+      if (room.state) return;
+      room.ready[client.id] = message.ready;
+      broadcastLobby(room);
+      maybeStartLobby(room);
+      return;
+    }
+
+    if (message.type === "leaveLobby") {
+      leaveLobby(room, client, false);
       return;
     }
 
@@ -73,25 +126,24 @@ wss.on("connection", (socket) => {
     }
 
     const action = toAction(message, client.id);
-    if (!action) return;
+    if (!action || !room.state) return;
     room.state = reduceGame(room.state, action);
     broadcast(room, { type: "state", state: room.state });
-    if (action.type === "roll" && room.state.phase === "bust") {
-      const bustedPlayer = room.state.activePlayer;
-      setTimeout(() => {
-        const latest = rooms.get(room.id);
-        if (!latest || latest.state.phase !== "bust" || latest.state.activePlayer !== bustedPlayer) return;
-        latest.state = reduceGame(latest.state, { type: "finishBust", playerId: bustedPlayer });
-        broadcast(latest, { type: "state", state: latest.state });
-      }, 4200);
-    }
+    afterGameAction(room, action);
   });
 
   socket.on("close", () => {
     countWatchers.delete(client);
+    lobbyWatchers.delete(client);
     removeFromQueue(client);
     const room = client.roomId ? rooms.get(client.roomId) : undefined;
-    if (room && client.id && room.state.phase !== "gameOver") {
+    if (!room || !client.id) return;
+    if (!room.state) {
+      leaveLobby(room, client, true);
+      return;
+    }
+    if (room.state.phase !== "gameOver") {
+      clearTurnTimer(room);
       room.state = reduceGame(room.state, { type: "forfeit", playerId: client.id });
       broadcast(room, { type: "state", state: room.state });
     }
@@ -99,7 +151,7 @@ wss.on("connection", (socket) => {
 });
 
 function joinQueue(client: Client, bet: number) {
-  const normalizedBet = [0, 10, 20, 30].includes(bet) ? bet : 0;
+  const normalizedBet = normalizeBet(bet);
   client.bet = normalizedBet;
   const queue = waiting.get(normalizedBet) ?? [];
   queue.push(client);
@@ -109,37 +161,169 @@ function joinQueue(client: Client, bet: number) {
 
   if (queue.length >= 2) {
     const players = queue.splice(0, 2);
-    createRoom(normalizedBet, players[0], players[1]);
+    createMatchedRoom(normalizedBet, players[0], players[1]);
     broadcastWaitingCounts();
   }
 }
 
-function createRoom(bet: number, first: Client, second: Client) {
-  const id = `room-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  first.id = "p1";
+function createMatchedRoom(bet: number, first: Client, second: Client) {
+  const room = makeRoom(first, bet, BET_GOALS[bet] ?? 1500, false);
   second.id = "p2";
-  first.roomId = id;
-  second.roomId = id;
-  const state = createGame("multiplayer", bet, BET_GOALS[bet] ?? 1500, ["Player 1", "Player 2"], {
-    p1: first.customization ?? defaultCustomization,
-    p2: second.customization ?? defaultCustomization
-  });
-  const room = { id, clients: [first, second], state };
-  rooms.set(id, room);
-  send(first, { type: "matched", playerId: "p1", state });
-  send(second, { type: "matched", playerId: "p2", state });
+  second.roomId = room.id;
+  second.username = uniqueUsername(room, second.username ?? "Player");
+  room.clients.push(second);
+  room.ready = { p1: true, p2: true };
+  rooms.set(room.id, room);
+  startLobbyGame(room);
 }
 
-function removeFromQueue(client: Client) {
-  if (client.bet === undefined) return;
-  const queue = waiting.get(client.bet);
-  if (!queue) return;
-  waiting.set(client.bet, queue.filter((candidate) => candidate !== client));
-  broadcastWaitingCounts();
+function createLobby(client: Client, bet: number, goal: number, isPublic: boolean) {
+  const room = makeRoom(client, bet, goal, isPublic);
+  rooms.set(room.id, room);
+  broadcastLobby(room);
+  broadcastPublicLobbies();
+}
+
+function makeRoom(host: Client, bet: number, goal: number, isPublic: boolean): Room {
+  const id = `room-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  host.id = "p1";
+  host.roomId = id;
+  host.bet = normalizeBet(bet);
+  return {
+    id,
+    code: uniqueCode(),
+    clients: [host],
+    hostId: "p1",
+    bet: normalizeBet(bet),
+    goal: BET_GOALS[normalizeBet(bet)] ?? goal,
+    public: isPublic,
+    ready: { p1: false }
+  };
+}
+
+function joinLobby(client: Client, message: Extract<ClientMessage, { type: "joinLobby" }>) {
+  const code = message.code?.toUpperCase();
+  const room = [...rooms.values()].find((candidate) => {
+    if (candidate.state || candidate.clients.length >= 2) return false;
+    if (message.lobbyId) return candidate.id === message.lobbyId;
+    return Boolean(code && candidate.code === code);
+  });
+
+  if (!room) {
+    send(client, { type: "error", message: "No lobby exists for that code." });
+    return;
+  }
+
+  client.id = room.clients.some((candidate) => candidate.id === "p1") ? "p2" : "p1";
+  client.roomId = room.id;
+  client.bet = room.bet;
+  client.username = uniqueUsername(room, client.username ?? "Player");
+  room.clients.push(client);
+  room.ready[client.id] = false;
+  broadcastLobby(room);
+  broadcastPublicLobbies();
+}
+
+function updateLobby(room: Room, client: Client, message: Extract<ClientMessage, { type: "updateLobby" }>) {
+  if (room.state || client.id !== room.hostId) return;
+  const nextBet = message.bet === undefined ? room.bet : normalizeBet(message.bet);
+  room.bet = nextBet;
+  room.goal = BET_GOALS[nextBet] ?? room.goal;
+  room.public = message.public ?? room.public;
+  room.ready = Object.fromEntries(room.clients.map((candidate) => [candidate.id, false])) as Partial<Record<PlayerId, boolean>>;
+  broadcastLobby(room);
+  broadcastPublicLobbies();
+}
+
+function leaveLobby(room: Room, client: Client, silent: boolean) {
+  if (!client.id) return;
+  room.clients = room.clients.filter((candidate) => candidate !== client);
+  delete room.ready[client.id];
+  client.roomId = undefined;
+  client.id = undefined;
+
+  if (room.clients.length === 0) {
+    rooms.delete(room.id);
+    clearTurnTimer(room);
+    broadcastPublicLobbies();
+    return;
+  }
+
+  if (room.hostId === "p1" && !room.clients.some((candidate) => candidate.id === "p1")) promoteHost(room);
+  if (room.hostId === "p2" && !room.clients.some((candidate) => candidate.id === "p2")) promoteHost(room);
+  room.ready = Object.fromEntries(room.clients.map((candidate) => [candidate.id, false])) as Partial<Record<PlayerId, boolean>>;
+  if (!silent) send(client, { type: "error", message: "You left the lobby." });
+  broadcastLobby(room);
+  broadcastPublicLobbies();
+}
+
+function promoteHost(room: Room) {
+  const nextHost = room.clients[0];
+  if (nextHost?.id) room.hostId = nextHost.id;
+}
+
+function maybeStartLobby(room: Room) {
+  if (room.clients.length !== 2) return;
+  if (!room.clients.every((client) => client.id && room.ready[client.id])) return;
+  startLobbyGame(room);
+}
+
+function startLobbyGame(room: Room) {
+  room.state = createGame("multiplayer", room.bet, room.goal, [playerName(room, "p1"), playerName(room, "p2")], {
+    p1: room.clients.find((client) => client.id === "p1")?.customization ?? defaultCustomization,
+    p2: room.clients.find((client) => client.id === "p2")?.customization ?? defaultCustomization
+  });
+  broadcastPublicLobbies();
+  for (const client of room.clients) {
+    if (client.id) send(client, { type: "matched", playerId: client.id, state: room.state });
+  }
+  armTurnTimer(room);
+}
+
+function afterGameAction(room: Room, action: ClientAction) {
+  if (!room.state) return;
+  if (room.state.phase === "gameOver") {
+    clearTurnTimer(room);
+    return;
+  }
+  if (action.type === "roll" && room.state.phase === "bust") {
+    clearTurnTimer(room);
+    const bustedPlayer = room.state.activePlayer;
+    setTimeout(() => {
+      const latest = rooms.get(room.id);
+      if (!latest?.state || latest.state.phase !== "bust" || latest.state.activePlayer !== bustedPlayer) return;
+      latest.state = reduceGame(latest.state, { type: "finishBust", playerId: bustedPlayer });
+      broadcast(latest, { type: "state", state: latest.state });
+      armTurnTimer(latest);
+    }, 4200);
+    return;
+  }
+  armTurnTimer(room);
+}
+
+function armTurnTimer(room: Room) {
+  if (!room.state || room.state.phase === "gameOver" || room.state.phase === "bust") return;
+  clearTurnTimer(room);
+  const playerId = room.state.activePlayer;
+  room.turnDeadline = Date.now() + turnDurationMs;
+  room.turnTimer = setTimeout(() => {
+    const latest = rooms.get(room.id);
+    if (!latest?.state || latest.state.phase === "gameOver" || latest.state.activePlayer !== playerId) return;
+    latest.state = reduceGame(latest.state, { type: "forfeit", playerId });
+    clearTurnTimer(latest);
+    broadcast(latest, { type: "state", state: latest.state });
+  }, turnDurationMs);
+  broadcast(room, { type: "turnTimer", playerId, endsAt: room.turnDeadline, durationMs: turnDurationMs });
+}
+
+function clearTurnTimer(room: Room) {
+  if (room.turnTimer) clearTimeout(room.turnTimer);
+  room.turnTimer = undefined;
+  room.turnDeadline = undefined;
 }
 
 function requestRematch(room: Room, client: Client) {
-  if (room.state.phase !== "gameOver" || !client.id) return;
+  if (!room.state || room.state.phase !== "gameOver" || !client.id) return;
   if (room.rematchFrom && room.rematchFrom !== client.id) {
     startRematch(room);
     return;
@@ -152,7 +336,7 @@ function requestRematch(room: Room, client: Client) {
 }
 
 function cancelRematch(room: Room, client: Client) {
-  if (room.state.phase !== "gameOver" || !client.id || room.rematchFrom !== client.id) return;
+  if (!room.state || room.state.phase !== "gameOver" || !client.id || room.rematchFrom !== client.id) return;
   room.rematchFrom = undefined;
   broadcast(room, { type: "rematchCancelled", by: client.id });
 }
@@ -163,6 +347,7 @@ function respondToRematch(room: Room, client: Client, accepted: boolean) {
   if (!accepted) {
     room.rematchFrom = undefined;
     broadcast(room, { type: "rematchDeclined" });
+    clearTurnTimer(room);
     rooms.delete(room.id);
     return;
   }
@@ -171,12 +356,14 @@ function respondToRematch(room: Room, client: Client, accepted: boolean) {
 }
 
 function startRematch(room: Room) {
+  if (!room.state) return;
   room.rematchFrom = undefined;
-  room.state = createGame("multiplayer", room.state.bet, BET_GOALS[room.state.bet] ?? 1500, ["Player 1", "Player 2"], {
+  room.state = createGame("multiplayer", room.state.bet, BET_GOALS[room.state.bet] ?? 1500, [playerName(room, "p1"), playerName(room, "p2")], {
     p1: room.clients.find((client) => client.id === "p1")?.customization ?? defaultCustomization,
     p2: room.clients.find((client) => client.id === "p2")?.customization ?? defaultCustomization
   });
   broadcast(room, { type: "rematchStarted", state: room.state });
+  armTurnTimer(room);
 }
 
 function toAction(message: ClientMessage, playerId: PlayerId): ClientAction | null {
@@ -186,6 +373,42 @@ function toAction(message: ClientMessage, playerId: PlayerId): ClientAction | nu
   if (message.type === "bank") return { type: "bank", playerId };
   if (message.type === "forfeit") return { type: "forfeit", playerId };
   return null;
+}
+
+function lobbyState(room: Room): LobbyState {
+  return {
+    id: room.id,
+    code: room.code,
+    bet: room.bet,
+    goal: room.goal,
+    public: room.public,
+    players: room.clients
+      .filter((client): client is Client & { id: PlayerId } => Boolean(client.id))
+      .map((client) => ({
+        id: client.id,
+        username: client.username ?? "Player",
+        ready: Boolean(room.ready[client.id]),
+        isHost: client.id === room.hostId
+      }))
+  };
+}
+
+function publicLobbies(): PublicLobby[] {
+  return [...rooms.values()]
+    .filter((room) => room.public && !room.state && room.clients.length === 1)
+    .map((room) => ({
+      id: room.id,
+      code: room.code,
+      host: room.clients[0]?.username ?? "Player",
+      bet: room.bet,
+      goal: room.goal
+    }));
+}
+
+function broadcastLobby(room: Room) {
+  for (const client of room.clients) {
+    if (client.id) send(client, { type: "lobby", lobby: lobbyState(room), playerId: client.id });
+  }
 }
 
 function broadcast(room: Room, message: ServerMessage) {
@@ -208,6 +431,58 @@ function sendWaitingCounts(client: Client) {
 
 function broadcastWaitingCounts() {
   for (const client of countWatchers) sendWaitingCounts(client);
+}
+
+function sendPublicLobbies(client: Client) {
+  send(client, { type: "publicLobbies", lobbies: publicLobbies() });
+}
+
+function broadcastPublicLobbies() {
+  for (const client of lobbyWatchers) sendPublicLobbies(client);
+}
+
+function removeFromQueue(client: Client) {
+  if (client.bet === undefined) return;
+  const queue = waiting.get(client.bet);
+  if (!queue) return;
+  waiting.set(client.bet, queue.filter((candidate) => candidate !== client));
+  broadcastWaitingCounts();
+}
+
+function normalizeBet(bet: number) {
+  return [0, 10, 20, 30].includes(bet) ? bet : 0;
+}
+
+function cleanUsername(username: string) {
+  const cleaned = username.trim().slice(0, 16);
+  return cleaned || "Player";
+}
+
+function uniqueUsername(room: Room, username: string) {
+  const existing = new Set(room.clients.map((client) => (client.username ?? "Player").toLowerCase()));
+  if (!existing.has(username.toLowerCase())) return username;
+  let suffix = 2;
+  let candidate = `${username} (${suffix})`;
+  while (existing.has(candidate.toLowerCase())) {
+    suffix += 1;
+    candidate = `${username} (${suffix})`;
+  }
+  return candidate;
+}
+
+function playerName(room: Room, playerId: PlayerId) {
+  return room.clients.find((client) => client.id === playerId)?.username ?? (playerId === "p1" ? "Player 1" : "Player 2");
+}
+
+function uniqueCode() {
+  let code = randomCode();
+  while ([...rooms.values()].some((room) => room.code === code)) code = randomCode();
+  return code;
+}
+
+function randomCode() {
+  const letters = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+  return Array.from({ length: 4 }, () => letters[Math.floor(Math.random() * letters.length)]).join("");
 }
 
 httpServer.listen(port, "0.0.0.0", () => {
