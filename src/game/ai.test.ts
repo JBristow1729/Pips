@@ -81,4 +81,18 @@ describe("shouldAiBank", () => {
       }
     })).toBe(true);
   });
+
+  it("banks reasonable comeback scores instead of chasing indefinitely", () => {
+    const state = aiSelectionState(30, [1, 2]);
+    expect(shouldAiBank({
+      ...state,
+      goal: 4000,
+      dice: state.dice.map((die, index) => ({ ...die, selected: index === 0 })),
+      players: {
+        ...state.players,
+        p1: { ...state.players.p1, total: 2000 },
+        p2: { ...state.players.p2, total: 0, held: 450, current: 100 }
+      }
+    })).toBe(true);
+  });
 });

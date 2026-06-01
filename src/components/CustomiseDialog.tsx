@@ -186,7 +186,7 @@ export function CustomiseDialog({ gold, inventory, onApply, onPurchase, onSpendG
         </Dialog>
       )}
       {notice && (
-        <Dialog title={notice} noLabel="Understood" onNo={() => setNotice(null)} />
+        <Dialog title={notice} noLabel="OK" onNo={() => setNotice(null)} />
       )}
     </div>
   );

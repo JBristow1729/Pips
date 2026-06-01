@@ -552,6 +552,13 @@ h1 {
   animation: spin 1s linear infinite;
 }
 
+.host-loading-panel {
+  justify-self: center;
+  display: grid;
+  justify-items: center;
+  gap: var(--space-3);
+}
+
 .game-screen {
   display: grid;
   grid-template-rows: auto 1fr;
@@ -818,8 +825,8 @@ h1 {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   grid-template-rows: repeat(3, 1fr);
-  gap: clamp(0.2rem, 0.45vw, 0.38rem);
-  padding: clamp(0.58rem, 1vw, 0.9rem);
+  gap: clamp(0.16rem, 0.35vw, 0.3rem);
+  padding: clamp(0.48rem, 0.86vw, 0.78rem);
   border: 2px solid #6b4723;
   border-radius: 10px;
   background:
@@ -883,8 +890,8 @@ h1 {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   grid-template-rows: repeat(3, 1fr);
-  gap: clamp(0.2rem, 0.45vw, 0.38rem);
-  padding: clamp(0.58rem, 1vw, 0.9rem);
+  gap: clamp(0.16rem, 0.35vw, 0.3rem);
+  padding: clamp(0.48rem, 0.86vw, 0.78rem);
   border: 2px solid #6b4723;
   border-radius: 10px;
   background:
@@ -920,23 +927,23 @@ h1 {
 
 .die-compact {
   --die-size: 2rem;
-  gap: 0.18rem;
-  padding: 0.32rem;
+  gap: 0.12rem;
+  padding: 0.25rem;
   border-radius: 6px;
   box-shadow: inset -3px -4px 7px rgba(91, 55, 18, 0.18);
   cursor: default;
 }
 
 .pip {
-  width: clamp(0.48rem, 1vw, 0.72rem);
-  height: clamp(0.48rem, 1vw, 0.72rem);
+  width: clamp(0.6rem, 1.18vw, 0.9rem);
+  height: clamp(0.6rem, 1.18vw, 0.9rem);
   place-self: center;
   border-radius: 50%;
 }
 
 .die-compact .pip {
-  width: 0.22rem;
-  height: 0.22rem;
+  width: 0.36rem;
+  height: 0.36rem;
 }
 
 .pip.visible {
@@ -1352,6 +1359,11 @@ h1 {
   cursor: default;
 }
 
+.customise-preview .die-compact .pip {
+  width: clamp(0.52rem, 1.5vw, 0.82rem);
+  height: clamp(0.52rem, 1.5vw, 0.82rem);
+}
+
 .customise-tabs {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1422,6 +1434,11 @@ h1 {
   cursor: pointer;
 }
 
+.customise-card .die-compact .pip {
+  width: clamp(0.48rem, 1.15vw, 0.68rem);
+  height: clamp(0.48rem, 1.15vw, 0.68rem);
+}
+
 .customise-card-name {
   font-weight: 900;
   text-align: center;
@@ -1462,6 +1479,15 @@ h1 {
   flex-wrap: wrap;
   gap: 0.28rem;
   align-items: center;
+}
+
+.rule-dice .die-compact {
+  --die-size: 2.35rem;
+}
+
+.rule-dice .die-compact .pip {
+  width: 0.42rem;
+  height: 0.42rem;
 }
 
 .error {

@@ -1,5 +1,8 @@
 let context: AudioContext | null = null;
 let muted = false;
+const diceDiceClip = "/audio/dice/DiceDice.mp3";
+const diceDiceRattleClip = "/audio/dice/DiceDiceRattle.mp3";
+const diceTrayRattleClip = "/audio/dice/DiceTrayRattle.mp3";
 
 function getContext() {
   context ??= new AudioContext();
@@ -25,10 +28,18 @@ export function playTap() {
   tone(420, 0.06, "triangle", 0.04);
 }
 
-export function playRoll() {
+export function playRoll(diceCount = 6) {
   if (muted) return;
-  for (let index = 0; index < 8; index += 1) {
-    window.setTimeout(() => tone(120 + Math.random() * 180, 0.04, "square", 0.025), index * 55);
+  const count = Math.max(1, Math.min(6, Math.floor(diceCount)));
+  const diceCollisionCount = Math.floor(Math.random() * (count + 1));
+
+  for (let index = 0; index < count; index += 1) {
+    window.setTimeout(() => playDiceClip(diceTrayRattleClip, 0.2, 0.09), index * (42 + Math.random() * 24));
+  }
+
+  for (let index = 0; index < diceCollisionCount; index += 1) {
+    const clip = Math.random() < 0.45 ? diceDiceRattleClip : diceDiceClip;
+    window.setTimeout(() => playDiceClip(clip, 0.28, 0.1), 65 + index * (58 + Math.random() * 42));
   }
 }
 
@@ -43,4 +54,12 @@ export function setMuted(value: boolean) {
 
 export function isMuted() {
   return muted;
+}
+
+function playDiceClip(clip: string, baseVolume: number, volumeVariance: number) {
+  if (muted) return;
+  const audio = new Audio(clip);
+  audio.volume = baseVolume + Math.random() * volumeVariance;
+  audio.playbackRate = 0.94 + Math.random() * 0.12;
+  void audio.play().catch(() => undefined);
 }

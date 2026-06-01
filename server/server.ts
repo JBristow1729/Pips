@@ -4,6 +4,7 @@ import { createGame, reduceGame } from "../src/game/gameState";
 import { defaultCustomization, type DiceCustomization } from "../src/customization/diceCustomization";
 import { BET_GOALS, type ClientAction, type GameState, type PlayerId } from "../src/game/types";
 import type { ClientMessage, LobbyState, PublicLobby, ServerMessage } from "../src/multiplayer/types";
+import { validateUsername } from "../src/storage/options";
 
 type Client = {
   socket: WebSocket;
@@ -298,7 +299,9 @@ function afterGameAction(room: Room, action: ClientAction) {
     }, 4200);
     return;
   }
-  armTurnTimer(room);
+  if (action.type === "hold" || action.type === "bank" || action.type === "finishBust") {
+    armTurnTimer(room);
+  }
 }
 
 function armTurnTimer(room: Room) {
@@ -455,7 +458,7 @@ function normalizeBet(bet: number) {
 
 function cleanUsername(username: string) {
   const cleaned = username.trim().slice(0, 16);
-  return cleaned || "Player";
+  return !validateUsername(cleaned) ? cleaned : "Player";
 }
 
 function uniqueUsername(room: Room, username: string) {

@@ -7,6 +7,7 @@ import { Scoreboard } from "./components/Scoreboard";
 import { playRoll, playTap, playWarning, setMuted } from "./audio/sounds";
 import { chooseAiDice, shouldAiBank } from "./game/ai";
 import { createGame, reduceGame } from "./game/gameState";
+import { scoreDice } from "./game/scoring";
 import { BET_GOALS, type GameState, type Mode, type PlayerId } from "./game/types";
 import type { Die, DieValue } from "./game/types";
 import { connectMultiplayerLobby, type MultiplayerConnection } from "./multiplayer/client";
@@ -96,7 +97,7 @@ function RulesDialog({ onClose }: { onClose: () => void }) {
             </div>
           ))}
         </div>
-        <MenuButton onClick={onClose}>Close</MenuButton>
+        <MenuButton onClick={onClose}>OK</MenuButton>
       </section>
     </div>
   );
@@ -192,6 +193,7 @@ export function App() {
   const [timerNow, setTimerNow] = useState(() => Date.now());
   const [lastWarningSecond, setLastWarningSecond] = useState<number | null>(null);
   const [rematchDialog, setRematchDialog] = useState<RematchDialog>(null);
+  const [rematchPurseError, setRematchPurseError] = useState(false);
   const connectionRef = useRef<MultiplayerConnection | null>(null);
   const resolvedGameRef = useRef(false);
   const playerIdRef = useRef<PlayerId>("p1");
@@ -200,19 +202,19 @@ export function App() {
   const goal = BET_GOALS[bet];
   const canAfford = gold >= bet;
   const nextGameGold =
-    game?.phase === "gameOver" && bet > 0 && !resolvedGameRef.current
-      ? gold + (game.winner === playerId ? bet : -bet)
+    game?.phase === "gameOver" && game.bet > 0 && !resolvedGameRef.current
+      ? gold + (game.winner === playerId ? game.bet : -game.bet)
       : gold;
-  const canAffordRematch = nextGameGold >= bet;
+  const canAffordRematch = nextGameGold >= (game?.bet ?? bet);
   const isMyTurn = game?.activePlayer === playerId;
-  const timerSecondsLeft = turnTimer ? Math.max(0, Math.ceil((turnTimer.endsAt - timerNow) / 1000)) : 0;
+  const timerSecondsLeft = turnTimer ? Math.min(Math.floor(turnTimer.durationMs / 1000), Math.max(0, Math.ceil((turnTimer.endsAt - timerNow) / 1000))) : 0;
   const canControlTurn = Boolean(
     game &&
       game.phase !== "gameOver" &&
       (game.mode === "singleplayer" ? game.activePlayer === "p1" : game.activePlayer === playerId)
   );
   const controlsEnabled = Boolean(canControlTurn && !isRolling);
-  const selectedScoreValid = Boolean(game && game.players[game.activePlayer].current > 0);
+  const selectedScoreValid = Boolean(game && selectedScoreFromDice(game) > 0);
   const hasRolledThisTurn = Boolean(
     game &&
       (game.phase !== "ready" ||
@@ -325,11 +327,11 @@ export function App() {
   useEffect(() => {
     if (!game || game.phase !== "gameOver" || resolvedGameRef.current) return;
     resolvedGameRef.current = true;
-    if (bet > 0) {
-      const delta = game.winner === playerIdRef.current ? bet : -bet;
+    if (game.bet > 0) {
+      const delta = game.winner === playerIdRef.current ? game.bet : -game.bet;
       setGold(changeWallet(delta));
     }
-  }, [game, bet]);
+  }, [game]);
 
   const startSingleplayer = () => {
     if (gold < bet) return;
@@ -375,6 +377,7 @@ export function App() {
       setTurnTimer(null);
       setPlayerId(message.playerId);
       playerIdRef.current = message.playerId;
+      setBet(message.state.bet);
       setGame(localizeNames(message.state, message.playerId));
       setScreen("game");
     }
@@ -402,6 +405,7 @@ export function App() {
       setRollVisual(null);
       setIsRolling(false);
       setTurnTimer(null);
+      setBet(message.state.bet);
       setGame(localizeNames(message.state, playerIdRef.current));
       setScreen("game");
     }
@@ -457,7 +461,7 @@ export function App() {
       motions,
       stopped: finalState.dice.map(() => false)
     });
-    playRoll();
+    playRoll(finalState.dice.length);
     const stopTimers = finalState.dice.map((_, index) =>
       window.setTimeout(() => {
         setRollVisual((current) => {
@@ -495,6 +499,7 @@ export function App() {
 
   const returnMain = () => {
     setRematchDialog(null);
+    setRematchPurseError(false);
     connectionRef.current?.close();
     connectionRef.current = null;
     setLobby(null);
@@ -510,7 +515,11 @@ export function App() {
   };
 
   const requestRematch = () => {
-    if (!game || !canAffordRematch) return;
+    if (!game) return;
+    if (!canAffordRematch) {
+      setRematchPurseError(true);
+      return;
+    }
     if (game.mode === "singleplayer") {
       startSingleplayer();
       return;
@@ -524,7 +533,11 @@ export function App() {
   };
 
   const answerRematch = (accepted: boolean) => {
-    if (accepted && !canAffordRematch) return;
+    if (accepted && !canAffordRematch) {
+      setRematchDialog(null);
+      setRematchPurseError(true);
+      return;
+    }
     connectionRef.current?.send({ type: "rematchResponse", accepted });
     if (accepted) setRematchDialog(null);
   };
@@ -744,12 +757,12 @@ export function App() {
           <section className="wait-panel host-loading-panel">
             <div className="loading-sigil" aria-hidden="true" />
             <div className="panel-kicker">Noticeboard</div>
-            <h2>Preparing table...</h2>
+            <h2>Preparing a Table...</h2>
             {multiplayerError && <p className="error">{multiplayerError}</p>}
+            <MenuButton variant="small" onClick={backToMultiplayerMenu}>
+              Cancel
+            </MenuButton>
           </section>
-          <MenuButton variant="small" className="back-button" onClick={backToMultiplayerMenu}>
-            Back
-          </MenuButton>
         </main>
       );
     }
@@ -827,7 +840,7 @@ export function App() {
                 <div className={`center-message ${game.phase === "gameOver" ? "winner" : ""}`} role="status" aria-live="polite">
                   {game.message}
                 </div>
-                {game.mode === "multiplayer" && isMyTurn && turnTimer?.playerId === playerId && game.phase !== "gameOver" && (
+                {game.mode === "multiplayer" && turnTimer && game.phase !== "gameOver" && (
                   <TurnTimerPanel secondsLeft={timerSecondsLeft} />
                 )}
               </div>
@@ -849,7 +862,7 @@ export function App() {
               </div>
               {game.phase === "gameOver" ? (
                 <div className="game-actions game-over-actions" aria-label="Game over actions">
-                  <MenuButton disabled={!canAffordRematch} onClick={requestRematch}>
+                  <MenuButton onClick={requestRematch}>
                     Rematch
                   </MenuButton>
                   <MenuButton onClick={returnMain}>Main Menu</MenuButton>
@@ -881,7 +894,7 @@ export function App() {
     }
 
     return null;
-  }, [screen, gold, bet, goal, canAfford, canAffordRematch, game, controlsEnabled, selectedScoreValid, hasRolledThisTurn, multiplayerError, playerId, isMyTurn, isRolling, rollVisual, customizationInventory, options, lobby, publicLobbies, joinCode, turnTimer, timerSecondsLeft]);
+  }, [screen, gold, bet, goal, canAfford, canAffordRematch, game, controlsEnabled, selectedScoreValid, hasRolledThisTurn, multiplayerError, playerId, isRolling, rollVisual, customizationInventory, options, lobby, publicLobbies, joinCode, turnTimer, timerSecondsLeft]);
 
   function selectMode(nextMode: Mode) {
     if (nextMode === "multiplayer" && isDefaultUsername(options.username)) {
@@ -895,7 +908,7 @@ export function App() {
     <div className="app">
       {content}
       {foundGold && (
-        <Dialog title="You found 10g..." onNo={() => setFoundGold(null)} noLabel="Nice">
+        <Dialog title="You found 10g..." onNo={() => setFoundGold(null)} noLabel="OK">
           <p>{foundGold}</p>
         </Dialog>
       )}
@@ -908,10 +921,19 @@ export function App() {
           title="You have been challenged to a rematch, do you accept?"
           onYes={() => answerRematch(true)}
           onNo={() => answerRematch(false)}
-          yesDisabled={!canAffordRematch}
         >
-          {!canAffordRematch && <p>You need {bet}g to accept this rematch.</p>}
+          {!canAffordRematch && <p>You need {game?.bet ?? bet}g to accept this rematch.</p>}
         </Dialog>
+      )}
+      {rematchPurseError && (
+        <Dialog
+          title="You do not have enough gold for this rematch."
+          onNo={() => {
+            setRematchPurseError(false);
+            returnMain();
+          }}
+          noLabel="OK"
+        />
       )}
       {rematchDialog === "cancelled" && (
         <Dialog title="That rematch invitation was cancelled." onNo={returnMain} noLabel="OK" />
@@ -968,6 +990,11 @@ function localizeNames(state: GameState, self: PlayerId): GameState {
     players,
     message: localizeMessage(state, self)
   };
+}
+
+function selectedScoreFromDice(state: GameState) {
+  if (state.phase !== "selecting") return 0;
+  return scoreDice(state.dice.filter((die) => die.selected).map((die) => die.value)).score;
 }
 
 function shouldAnimateIncomingRoll(current: GameState | null, incoming: GameState) {

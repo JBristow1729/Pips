@@ -125,18 +125,29 @@ export function shouldAiBank(state: GameState): boolean {
   const playerNearWin = state.goal - human.total <= Math.max(250, state.goal * 0.08);
   const aiNearWin = state.goal - aiEffectiveTotal <= Math.max(350, state.goal * 0.12);
   const hasCaughtUpEnough = scoreGap <= closeScoreMargin;
+  const progress = Math.min(1, aiEffectiveTotal / state.goal);
+  const bankFloor = BANK_FLOOR_BY_DICE[diceAfterChoice] ?? 500;
+  const comebackBankFloor = Math.max(250, bankFloorForComeback(diceAfterChoice, state.goal, scoreGap, progress));
   const riskMultiplier =
     1 +
-    (scoreGap / state.goal) * config.riskResponse +
+    Math.min(0.55, Math.max(-0.45, scoreGap / state.goal)) * config.riskResponse +
     (playerNearWin && !hasCaughtUpEnough ? config.endgameUrgency : 0) +
     (aiNearWin ? config.endgameUrgency * 0.4 : 0);
   const leadConservation = Math.max(0, aiEffectiveTotal - human.total) * (0.06 + config.expectedWeight * 0.04);
   const adjustedFutureValue = futureValue * Math.max(0.3, riskMultiplier) - leadConservation + config.bankBias;
-  const bankFloor = BANK_FLOOR_BY_DICE[diceAfterChoice] ?? 500;
 
+  if (scoreGap > closeScoreMargin && turnScore >= comebackBankFloor && diceAfterChoice <= 3 && !playerNearWin) return true;
   if (futureValue <= 0 && hasCaughtUpEnough && turnScore >= bankFloor) return true;
   if (playerNearWin && aiEffectiveTotal + closeScoreMargin < human.total) return false;
   return turnScore >= bankFloor && adjustedFutureValue <= 0;
+}
+
+function bankFloorForComeback(diceAfterChoice: number, goal: number, scoreGap: number, progress: number) {
+  const base = BANK_FLOOR_BY_DICE[diceAfterChoice] ?? 500;
+  const behindRatio = Math.max(0, scoreGap / goal);
+  const catchUpDiscount = Math.min(160, behindRatio * 260 + progress * 80);
+  const fewDicePenalty = diceAfterChoice <= 2 ? 80 : diceAfterChoice === 3 ? 40 : 0;
+  return base - catchUpDiscount + fewDicePenalty;
 }
 
 function remainingDiceCount(rolledDiceCount: number, selectedDiceCount: number) {

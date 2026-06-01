@@ -19,14 +19,14 @@ export function Dialog({ title, children, onYes, onNo, yesLabel = "Yes", noLabel
         <h2 id="dialog-title">{title}</h2>
         <div className="dialog-body">{children}</div>
         <div className="dialog-actions">
-          {onNo && (
-            <MenuButton onClick={onNo} disabled={noDisabled}>
-              {noLabel}
-            </MenuButton>
-          )}
           {onYes && (
             <MenuButton variant="danger" onClick={onYes} disabled={yesDisabled}>
               {yesLabel}
+            </MenuButton>
+          )}
+          {onNo && (
+            <MenuButton onClick={onNo} disabled={noDisabled}>
+              {noLabel}
             </MenuButton>
           )}
         </div>
