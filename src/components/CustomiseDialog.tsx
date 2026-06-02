@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { playTap } from "../audio/sounds";
 import { CUSTOMIZATION_COST, diceColors, pipShapes, type CustomizationTab, type DiceColorId, type DiceCustomization, type DiceCustomizationInventory, type PipShapeId } from "../customization/diceCustomization";
 import type { DieValue } from "../game/types";
 import { Dialog } from "./Dialog";
@@ -117,13 +118,13 @@ export function CustomiseDialog({ gold, inventory, onApply, onPurchase, onSpendG
         </div>
 
         <div className="customise-tabs" role="tablist" aria-label="Customisation categories">
-          <button className={activeTab === "body" ? "active" : ""} type="button" role="tab" aria-selected={activeTab === "body"} onClick={() => setActiveTab("body")}>
+          <button className={activeTab === "body" ? "active" : ""} type="button" role="tab" aria-selected={activeTab === "body"} onClick={() => selectTab("body", setActiveTab)}>
             Body
           </button>
-          <button className={activeTab === "pipColor" ? "active" : ""} type="button" role="tab" aria-selected={activeTab === "pipColor"} onClick={() => setActiveTab("pipColor")}>
+          <button className={activeTab === "pipColor" ? "active" : ""} type="button" role="tab" aria-selected={activeTab === "pipColor"} onClick={() => selectTab("pipColor", setActiveTab)}>
             Pip Colour
           </button>
-          <button className={activeTab === "pipShape" ? "active" : ""} type="button" role="tab" aria-selected={activeTab === "pipShape"} onClick={() => setActiveTab("pipShape")}>
+          <button className={activeTab === "pipShape" ? "active" : ""} type="button" role="tab" aria-selected={activeTab === "pipShape"} onClick={() => selectTab("pipShape", setActiveTab)}>
             Pip Shape
           </button>
         </div>
@@ -193,8 +194,13 @@ export function CustomiseDialog({ gold, inventory, onApply, onPurchase, onSpendG
 }
 
 function OptionCard({ label, preview, status, onClick }: { label: string; preview: DiceCustomization; status: string; onClick: () => void }) {
+  const handleClick = () => {
+    playTap();
+    onClick();
+  };
+
   return (
-    <button className={`customise-card ${status === "Equipped" ? "equipped" : ""}`} type="button" onClick={onClick}>
+    <button className={`customise-card ${status === "Equipped" ? "equipped" : ""}`} type="button" onClick={handleClick}>
       <Dice
         die={{ id: `card-${label}`, value: 5, selected: false }}
         disabled
@@ -208,6 +214,11 @@ function OptionCard({ label, preview, status, onClick }: { label: string; previe
       <strong>{status}</strong>
     </button>
   );
+}
+
+function selectTab(tab: CustomizationTab, setActiveTab: (tab: CustomizationTab) => void) {
+  playTap();
+  setActiveTab(tab);
 }
 
 function getStatus(owned: boolean, equipped: boolean) {

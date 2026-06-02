@@ -2,7 +2,12 @@ let context: AudioContext | null = null;
 let muted = false;
 const diceDiceClip = "/audio/dice/DiceDice.mp3";
 const diceDiceRattleClip = "/audio/dice/DiceDiceRattle.mp3";
+const diceTrayClip = "/audio/dice/DiceTray.mp3";
 const diceTrayRattleClip = "/audio/dice/DiceTrayRattle.mp3";
+type RollSoundOptions = {
+  rollWindowMs?: number;
+  startStaggerMs?: number;
+};
 
 function getContext() {
   context ??= new AudioContext();
@@ -28,19 +33,19 @@ export function playTap() {
   tone(420, 0.06, "triangle", 0.04);
 }
 
-export function playRoll(diceCount = 6) {
+export function playRoll(diceCount = 6, options: RollSoundOptions = {}) {
   if (muted) return;
   const count = Math.max(1, Math.min(6, Math.floor(diceCount)));
-  const diceCollisionCount = Math.floor(Math.random() * (count + 1));
+  const rollWindowMs = Math.max(250, options.rollWindowMs ?? 1500);
+  const startStaggerMs = Math.max(0, options.startStaggerMs ?? 100);
 
   for (let index = 0; index < count; index += 1) {
-    window.setTimeout(() => playDiceClip(diceTrayRattleClip, 0.2, 0.09), index * (42 + Math.random() * 24));
+    window.setTimeout(() => playDiceClip(diceTrayRattleClip, 0.2, 0.09), index * startStaggerMs);
   }
 
-  for (let index = 0; index < diceCollisionCount; index += 1) {
-    const clip = Math.random() < 0.45 ? diceDiceRattleClip : diceDiceClip;
-    window.setTimeout(() => playDiceClip(clip, 0.28, 0.1), 65 + index * (58 + Math.random() * 42));
-  }
+  scheduleRandomDiceClips(diceDiceClip, randomClipCount(count), rollWindowMs, 0.26, 0.1);
+  scheduleRandomDiceClips(diceDiceRattleClip, randomClipCount(count), rollWindowMs, 0.25, 0.1);
+  scheduleRandomDiceClips(diceTrayClip, randomClipCount(count), rollWindowMs, 0.22, 0.08);
 }
 
 export function playWarning() {
@@ -62,4 +67,15 @@ function playDiceClip(clip: string, baseVolume: number, volumeVariance: number) 
   audio.volume = baseVolume + Math.random() * volumeVariance;
   audio.playbackRate = 0.94 + Math.random() * 0.12;
   void audio.play().catch(() => undefined);
+}
+
+function scheduleRandomDiceClips(clip: string, count: number, rollWindowMs: number, baseVolume: number, volumeVariance: number) {
+  for (let index = 0; index < count; index += 1) {
+    const delay = Math.random() * rollWindowMs;
+    window.setTimeout(() => playDiceClip(clip, baseVolume, volumeVariance), delay);
+  }
+}
+
+function randomClipCount(max: number) {
+  return Math.floor(Math.random() * (max + 1));
 }

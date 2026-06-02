@@ -27,13 +27,15 @@ type RollMotion = {
 type RollVisual = {
   dice: Die[];
   motions: RollMotion[];
+  started: boolean[];
   stopped: boolean[];
 };
 type RematchDialog = "waiting" | "challenge" | "cancelled" | null;
 type TurnTimer = { playerId: PlayerId; endsAt: number; durationMs: number };
 
-const rollBaseDuration = 1.1;
-const rollStopStagger = 0.2;
+const rollBaseDuration = 1.3;
+const rollStartStagger = 0.1;
+const rollStopStagger = 0.1;
 
 const foundPhrases = [
   "On the tavern floor!",
@@ -459,9 +461,23 @@ export function App() {
     setRollVisual({
       dice: finalState.dice.map((die) => ({ ...die, selected: false })),
       motions,
+      started: finalState.dice.map((_, index) => index === 0),
       stopped: finalState.dice.map(() => false)
     });
-    playRoll(finalState.dice.length);
+    playRoll(finalState.dice.length, {
+      rollWindowMs: rollStopMs(Math.max(0, finalState.dice.length - 1)),
+      startStaggerMs: rollStartStagger * 1000
+    });
+    const startTimers = finalState.dice.slice(1).map((_, offset) =>
+      window.setTimeout(() => {
+        setRollVisual((current) => {
+          if (!current) return current;
+          const started = [...current.started];
+          started[offset + 1] = true;
+          return { ...current, started };
+        });
+      }, rollStartMs(offset + 1))
+    );
     const stopTimers = finalState.dice.map((_, index) =>
       window.setTimeout(() => {
         setRollVisual((current) => {
@@ -477,7 +493,7 @@ export function App() {
       setIsRolling(false);
       setGame(finalState);
     }, rollCompleteMs(finalState.dice.length));
-    animationTimersRef.current = [...stopTimers, done];
+    animationTimersRef.current = [...startTimers, ...stopTimers, done];
   };
 
   const clearAnimationTimers = () => {
@@ -849,7 +865,7 @@ export function App() {
                   <Dice
                     key={die.id}
                     die={die}
-                    rolling={Boolean(isRolling && !rollVisual?.stopped[index])}
+                    rolling={Boolean(isRolling && rollVisual?.started[index] && !rollVisual?.stopped[index])}
                     rollMotion={rollVisual?.motions[index]}
                     disabled={!controlsEnabled || game.phase !== "selecting"}
                     customization={game.players[game.activePlayer].diceCustomization}
@@ -1063,7 +1079,7 @@ function randomAxisComponent() {
 }
 
 function rollStopMs(index: number) {
-  return Math.ceil(rollDurationSeconds(index) * 1000);
+  return Math.ceil((rollBaseDuration + Math.max(0, index) * rollStopStagger) * 1000);
 }
 
 function rollCompleteMs(diceCount: number) {
@@ -1071,5 +1087,9 @@ function rollCompleteMs(diceCount: number) {
 }
 
 function rollDurationSeconds(index: number) {
-  return rollBaseDuration + Math.max(0, index) * rollStopStagger;
+  return rollStopMs(index) / 1000 - rollStartMs(index) / 1000;
+}
+
+function rollStartMs(index: number) {
+  return Math.ceil(rollStartStagger * Math.max(0, index) * 1000);
 }
