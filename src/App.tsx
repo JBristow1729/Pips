@@ -13,7 +13,7 @@ import type { Die, DieValue } from "./game/types";
 import { connectMultiplayerLobby, type MultiplayerConnection } from "./multiplayer/client";
 import type { LobbyState, PublicLobby, ServerMessage } from "./multiplayer/types";
 import { createRandomCustomization, readCustomizationInventory, writeCustomizationInventory, type DiceCustomizationInventory } from "./customization/diceCustomization";
-import { isDefaultUsername, readOptions, validateUsername, writeOptions, type PlayerOptions } from "./storage/options";
+import { isDefaultUsername, readOptions, usernameMaxLength, validateUsername, writeOptions, type PlayerOptions } from "./storage/options";
 import { changeWallet, readWallet } from "./storage/wallet";
 
 type Screen = "main" | "bet" | "multiplayer" | "host" | "join" | "game";
@@ -129,7 +129,7 @@ function OptionsDialog({ options, onApply, onClose }: { options: PlayerOptions; 
             <span>Username</span>
             <input
               value={draft.username}
-              maxLength={16}
+              maxLength={usernameMaxLength}
               onChange={(event) => updateUsername(event.currentTarget.value)}
               aria-invalid={Boolean(usernameError)}
             />
@@ -181,6 +181,7 @@ export function App() {
   const [customiseOpen, setCustomiseOpen] = useState(false);
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [defaultNameWarning, setDefaultNameWarning] = useState(false);
+  const [longNameWarning, setLongNameWarning] = useState(false);
   const [options, setOptions] = useState<PlayerOptions>(() => readOptions());
   const [customizationInventory, setCustomizationInventory] = useState<DiceCustomizationInventory>(() => readCustomizationInventory());
   const [foundGold, setFoundGold] = useState<string | null>(null);
@@ -351,6 +352,10 @@ export function App() {
   };
 
   const hostGame = () => {
+    if (isUsernameTooLong(options.username)) {
+      setLongNameWarning(true);
+      return;
+    }
     const connection = openLobbyConnection();
     setLobby(null);
     setScreen("host");
@@ -358,6 +363,10 @@ export function App() {
   };
 
   const openJoinMenu = () => {
+    if (isUsernameTooLong(options.username)) {
+      setLongNameWarning(true);
+      return;
+    }
     const connection = openLobbyConnection();
     setLobby(null);
     setPublicLobbies([]);
@@ -917,6 +926,10 @@ export function App() {
       setDefaultNameWarning(true);
       return;
     }
+    if (nextMode === "multiplayer" && isUsernameTooLong(options.username)) {
+      setLongNameWarning(true);
+      return;
+    }
     setScreen(nextMode === "singleplayer" ? "bet" : "multiplayer");
   }
 
@@ -968,6 +981,17 @@ export function App() {
           <p>Your profile is still using the default name.</p>
         </Dialog>
       )}
+      {longNameWarning && (
+        <Dialog
+          title="Your name is too long, please change it."
+          onNo={() => {
+            setLongNameWarning(false);
+            setScreen("main");
+            setOptionsOpen(true);
+          }}
+          noLabel="OK"
+        />
+      )}
       {optionsOpen && <OptionsDialog options={options} onApply={applyOptions} onClose={() => setOptionsOpen(false)} />}
       {privateJoinFailed && (
         <Dialog
@@ -1006,6 +1030,10 @@ function localizeNames(state: GameState, self: PlayerId): GameState {
     players,
     message: localizeMessage(state, self)
   };
+}
+
+function isUsernameTooLong(username: string) {
+  return username.trim().length > usernameMaxLength;
 }
 
 function selectedScoreFromDice(state: GameState) {

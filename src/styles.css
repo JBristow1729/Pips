@@ -615,13 +615,19 @@ h1 {
   align-items: start;
   justify-content: space-between;
   gap: var(--space-2);
+  min-width: 0;
   margin-bottom: var(--space-2);
 }
 
 .scoreboard h2 {
+  min-width: 0;
+  flex: 1 1 auto;
   margin: 0;
   font-size: clamp(1.45rem, 1.08rem + 1.1vw, 2.25rem);
   line-height: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .turn-marker {
@@ -754,10 +760,11 @@ h1 {
   padding: 0.4rem 0.85rem;
   color: var(--color-cream);
   font-family: var(--font-heading);
-  font-size: clamp(2rem, 4.2vw, 4.6rem);
+  font-size: clamp(1.65rem, 3.4vw, 3.4rem);
   line-height: 1;
   text-align: center;
   text-shadow: 0 4px 0 #000, 0 0 20px rgba(242, 204, 98, 0.24);
+  white-space: nowrap;
 }
 
 .center-message.winner {
@@ -1839,7 +1846,7 @@ h1 {
 
   .center-message {
     min-height: 2.65rem;
-    font-size: clamp(1.65rem, 8vw, 2.45rem);
+    font-size: clamp(1.25rem, 6vw, 1.9rem);
   }
 
   .dice-tray {

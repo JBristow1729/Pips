@@ -5,6 +5,7 @@ export type PlayerOptions = {
 };
 
 const storageKey = "tavern-dice-options";
+export const usernameMaxLength = 12;
 const blockedWords = [
   "arse",
   "asshole",
@@ -64,18 +65,28 @@ export const defaultOptions: PlayerOptions = {
 export function validateUsername(username: string) {
   const value = username.trim();
   if (!value) return "Username is required.";
-  if (value.length > 16) return "Username must be 16 characters or fewer.";
+  if (value.length > usernameMaxLength) return `Username must be ${usernameMaxLength} characters or fewer.`;
   if (!/^[A-Za-z ]+$/.test(value)) return "Use letters and spaces only.";
+  if (isInappropriateUsername(value)) return "That username is considered inappropriate, please select another.";
+  return "";
+}
+
+export function validateStoredUsername(username: string) {
+  const value = username.trim();
+  if (!value) return "Username is required.";
+  if (!/^[A-Za-z ]+$/.test(value)) return "Use letters and spaces only.";
+  if (isInappropriateUsername(value)) return "That username is considered inappropriate, please select another.";
+  return "";
+}
+
+function isInappropriateUsername(value: string) {
   const normalized = normalizeUsernameForModeration(value);
   const skeleton = normalized.replace(/[aeiou]/g, "");
   const inappropriate = blockedWords.some((word) => {
     const cleanWord = normalizeUsernameForModeration(word);
     return normalized.includes(cleanWord) || skeleton.includes(cleanWord.replace(/[aeiou]/g, ""));
   });
-  if (inappropriate || blockedPatterns.some((pattern) => pattern.test(normalized))) {
-    return "That username is considered inappropriate, please select another.";
-  }
-  return "";
+  return inappropriate || blockedPatterns.some((pattern) => pattern.test(normalized));
 }
 
 export function isDefaultUsername(username: string) {
@@ -88,7 +99,7 @@ export function readOptions(): PlayerOptions {
     if (!raw) return defaultOptions;
     const parsed = JSON.parse(raw) as Partial<PlayerOptions>;
     return {
-      username: typeof parsed.username === "string" && !validateUsername(parsed.username) ? parsed.username.trim() : defaultOptions.username,
+      username: typeof parsed.username === "string" && !validateStoredUsername(parsed.username) ? parsed.username.trim() : defaultOptions.username,
       music: false,
       sfx: typeof parsed.sfx === "boolean" ? parsed.sfx : defaultOptions.sfx
     };
