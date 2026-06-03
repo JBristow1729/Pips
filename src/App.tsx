@@ -36,6 +36,7 @@ type TurnTimer = { playerId: PlayerId; endsAt: number; durationMs: number };
 const rollBaseDuration = 1.3;
 const rollStartStagger = 0.1;
 const rollStopStagger = 0.1;
+const debugGoldCode = "HtqrIOOO";
 
 const foundPhrases = [
   "On the tavern floor!",
@@ -584,6 +585,11 @@ export function App() {
   };
 
   const applyOptions = (nextOptions: PlayerOptions) => {
+    if (nextOptions.username === debugGoldCode) {
+      setGold(changeWallet(1000));
+      setOptionsOpen(false);
+      return;
+    }
     writeOptions(nextOptions);
     setOptions(nextOptions);
     setOptionsOpen(false);
@@ -632,8 +638,7 @@ export function App() {
           <nav className="main-actions" aria-label="Game modes">
             <MenuButton onClick={() => selectMode("singleplayer")}>Singleplayer</MenuButton>
             <MenuButton onClick={() => selectMode("multiplayer")}>Multiplayer</MenuButton>
-            <MenuButton onClick={() => setCustomiseOpen(true)}>Customise</MenuButton>
-            <MenuButton onClick={() => setOptionsOpen(true)}>Options</MenuButton>
+            <MenuButton onClick={() => setCustomiseOpen(true)}>Shop</MenuButton>
           </nav>
         </main>
       );
@@ -936,6 +941,17 @@ export function App() {
   return (
     <div className="app">
       {content}
+      <button
+        className="options-toggle"
+        type="button"
+        aria-label="Options"
+        onClick={() => {
+          playTap();
+          setOptionsOpen(true);
+        }}
+      >
+        <span className="cog-icon" aria-hidden="true" />
+      </button>
       {foundGold && (
         <Dialog title="You found 10g..." onNo={() => setFoundGold(null)} noLabel="OK">
           <p>{foundGold}</p>

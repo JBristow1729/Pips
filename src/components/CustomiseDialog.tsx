@@ -1,6 +1,18 @@
 import { useMemo, useState } from "react";
 import { playTap } from "../audio/sounds";
-import { CUSTOMIZATION_COST, diceColors, pipShapes, type CustomizationTab, type DiceColorId, type DiceCustomization, type DiceCustomizationInventory, type PipShapeId } from "../customization/diceCustomization";
+import {
+  CUSTOMIZATION_COST,
+  TEXTURE_CUSTOMIZATION_COST,
+  diceColors,
+  diceTextures,
+  pipShapes,
+  type CustomizationTab,
+  type DiceColorId,
+  type DiceCustomization,
+  type DiceCustomizationInventory,
+  type DiceTextureId,
+  type PipShapeId
+} from "../customization/diceCustomization";
 import type { DieValue } from "../game/types";
 import { Dialog } from "./Dialog";
 import { Dice } from "./Dice";
@@ -18,7 +30,8 @@ type Props = {
 type PurchaseTarget =
   | { tab: "body"; id: DiceColorId; label: string }
   | { tab: "pipColor"; id: DiceColorId; label: string }
-  | { tab: "pipShape"; id: PipShapeId; label: string };
+  | { tab: "pipShape"; id: PipShapeId; label: string }
+  | { tab: "texture"; id: DiceTextureId; label: string };
 
 const previewValues: DieValue[] = [1, 2, 3, 4, 5, 6];
 
@@ -73,9 +86,18 @@ export function CustomiseDialog({ gold, inventory, onApply, onPurchase, onSpendG
     setDraft((current) => ({ ...current, pipShape: id }));
   };
 
+  const selectTexture = (id: DiceTextureId, label: string) => {
+    if (!owned.texture.includes(id)) {
+      setPurchaseTarget({ tab: "texture", id, label });
+      return;
+    }
+    setDraft((current) => ({ ...current, texture: id }));
+  };
+
   const confirmPurchase = () => {
     if (!purchaseTarget) return;
-    if (!onSpendGold(CUSTOMIZATION_COST)) {
+    const cost = getCost(purchaseTarget.tab);
+    if (!onSpendGold(cost)) {
       setPurchaseTarget(null);
       setNotice("You need more gold for that customisation.");
       return;
@@ -95,7 +117,7 @@ export function CustomiseDialog({ gold, inventory, onApply, onPurchase, onSpendG
         <div className="customise-heading">
           <div>
             <div className="panel-kicker">Dice Chest</div>
-            <h2 id="customise-title">Customise Dice</h2>
+            <h2 id="customise-title">Shop</h2>
           </div>
           <div className="customise-purse" aria-label={`${gold} gold available`}>
             {gold}g
@@ -117,15 +139,18 @@ export function CustomiseDialog({ gold, inventory, onApply, onPurchase, onSpendG
           ))}
         </div>
 
-        <div className="customise-tabs" role="tablist" aria-label="Customisation categories">
+        <div className="customise-tabs tabs-count-4" role="tablist" aria-label="Customisation categories">
           <button className={activeTab === "body" ? "active" : ""} type="button" role="tab" aria-selected={activeTab === "body"} onClick={() => selectTab("body", setActiveTab)}>
-            Body
+            Dice
           </button>
           <button className={activeTab === "pipColor" ? "active" : ""} type="button" role="tab" aria-selected={activeTab === "pipColor"} onClick={() => selectTab("pipColor", setActiveTab)}>
-            Pip Colour
+            Pips
           </button>
           <button className={activeTab === "pipShape" ? "active" : ""} type="button" role="tab" aria-selected={activeTab === "pipShape"} onClick={() => selectTab("pipShape", setActiveTab)}>
-            Pip Shape
+            Shape
+          </button>
+          <button className={activeTab === "texture" ? "active" : ""} type="button" role="tab" aria-selected={activeTab === "texture"} onClick={() => selectTab("texture", setActiveTab)}>
+            Texture
           </button>
         </div>
 
@@ -135,7 +160,7 @@ export function CustomiseDialog({ gold, inventory, onApply, onPurchase, onSpendG
               <OptionCard
                 key={option.id}
                 label={option.label}
-                status={getStatus(owned.body.includes(option.id), draft.body === option.id)}
+                status={getStatus(owned.body.includes(option.id), draft.body === option.id, getCost("body"))}
                 preview={{ ...draft, body: option.id }}
                 onClick={() => selectBody(option.id, option.label)}
               />
@@ -145,7 +170,7 @@ export function CustomiseDialog({ gold, inventory, onApply, onPurchase, onSpendG
               <OptionCard
                 key={option.id}
                 label={option.label}
-                status={getStatus(owned.pipColor.includes(option.id), draft.pipColor === option.id)}
+                status={getStatus(owned.pipColor.includes(option.id), draft.pipColor === option.id, getCost("pipColor"))}
                 preview={{ ...draft, pipColor: option.id }}
                 onClick={() => selectPipColor(option.id, option.label)}
               />
@@ -155,9 +180,19 @@ export function CustomiseDialog({ gold, inventory, onApply, onPurchase, onSpendG
               <OptionCard
                 key={option.id}
                 label={option.label}
-                status={getStatus(owned.pipShape.includes(option.id), draft.pipShape === option.id)}
+                status={getStatus(owned.pipShape.includes(option.id), draft.pipShape === option.id, getCost("pipShape"))}
                 preview={{ ...draft, pipShape: option.id }}
                 onClick={() => selectPipShape(option.id, option.label)}
+              />
+            ))}
+          {activeTab === "texture" &&
+            diceTextures.map((option) => (
+              <OptionCard
+                key={option.id}
+                label={option.label}
+                status={getStatus(owned.texture.includes(option.id), draft.texture === option.id, getCost("texture"))}
+                preview={{ ...draft, texture: option.id }}
+                onClick={() => selectTexture(option.id, option.label)}
               />
             ))}
         </div>
@@ -174,7 +209,7 @@ export function CustomiseDialog({ gold, inventory, onApply, onPurchase, onSpendG
 
       {purchaseTarget && (
         <Dialog
-          title={`Purchase ${purchaseTarget.label} for ${CUSTOMIZATION_COST}g?`}
+          title={`Purchase ${purchaseTarget.label} for ${getCost(purchaseTarget.tab)}g?`}
           yesLabel="Purchase"
           noLabel="Cancel"
           onYes={confirmPurchase}
@@ -221,12 +256,16 @@ function selectTab(tab: CustomizationTab, setActiveTab: (tab: CustomizationTab) 
   setActiveTab(tab);
 }
 
-function getStatus(owned: boolean, equipped: boolean) {
+function getCost(tab: CustomizationTab) {
+  return tab === "texture" ? TEXTURE_CUSTOMIZATION_COST : CUSTOMIZATION_COST;
+}
+
+function getStatus(owned: boolean, equipped: boolean, cost: number) {
   if (equipped) return "Equipped";
   if (owned) return "Owned";
-  return `${CUSTOMIZATION_COST}g`;
+  return `${cost}g`;
 }
 
 function sameCustomization(left: DiceCustomization, right: DiceCustomization) {
-  return left.body === right.body && left.pipColor === right.pipColor && left.pipShape === right.pipShape;
+  return left.body === right.body && left.pipColor === right.pipColor && left.pipShape === right.pipShape && left.texture === right.texture;
 }

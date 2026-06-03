@@ -357,19 +357,72 @@ h1 {
   border-color: #e89d86;
 }
 
-.mute-toggle {
+.options-toggle {
   position: fixed;
   right: var(--space-3);
   bottom: var(--space-3);
   z-index: var(--z-controls);
-  min-height: 2.5rem;
-  padding: 0.55rem 0.85rem;
-  color: var(--color-cream);
-  background: rgba(25, 17, 11, 0.88);
-  border: var(--border-carved);
+  width: 3rem;
+  height: 3rem;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  background:
+    linear-gradient(180deg, rgba(255, 241, 176, 0.18), transparent 36%),
+    linear-gradient(180deg, #8a5428, #4b2815 58%, #25140c);
+  border: 1px solid #f0c866;
   border-radius: var(--radius-small);
-  box-shadow: 0 12px 22px rgba(0, 0, 0, 0.32);
+  box-shadow: 0 6px 0 #1a0d07, 0 15px 26px rgba(0, 0, 0, 0.36), inset 0 0 0 1px rgba(255, 255, 255, 0.14);
   cursor: pointer;
+  transition: transform var(--duration-fast) ease, filter var(--duration-fast) ease, box-shadow var(--duration-fast) ease;
+}
+
+.options-toggle:hover {
+  transform: translateY(-2px);
+  filter: brightness(1.1);
+  box-shadow: 0 8px 0 #1a0d07, 0 18px 30px rgba(0, 0, 0, 0.38), 0 0 26px rgba(242, 204, 98, 0.12);
+}
+
+.options-toggle:active {
+  transform: translateY(3px);
+  box-shadow: 0 3px 0 #1a0d07, var(--shadow-pressed);
+}
+
+.cog-icon {
+  width: 1.35rem;
+  height: 1.35rem;
+  position: relative;
+  display: block;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle, transparent 0 22%, #5b3317 23% 36%, transparent 37%),
+    conic-gradient(
+      #f1c96b 0 8%,
+      transparent 8% 13%,
+      #8a571f 13% 21%,
+      transparent 21% 26%,
+      #f1c96b 26% 34%,
+      transparent 34% 39%,
+      #8a571f 39% 47%,
+      transparent 47% 52%,
+      #f1c96b 52% 60%,
+      transparent 60% 65%,
+      #8a571f 65% 73%,
+      transparent 73% 78%,
+      #f1c96b 78% 86%,
+      transparent 86% 91%,
+      #8a571f 91% 100%
+    );
+  filter: drop-shadow(0 2px 0 #120b07);
+}
+
+.cog-icon::after {
+  content: "";
+  position: absolute;
+  inset: 34%;
+  border-radius: 50%;
+  background: #2b170d;
+  box-shadow: inset 0 1px 1px rgba(255, 241, 176, 0.26);
 }
 
 .bet-panel,
@@ -827,8 +880,12 @@ h1 {
   --die-shadow: #b98f54;
   --pip-color: #181511;
   --pip-shadow: #050403;
+  --die-texture: none;
+  --die-texture-opacity: 0;
+  --die-texture-blend: normal;
   width: var(--die-size);
   height: var(--die-size);
+  position: relative;
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   grid-template-rows: repeat(3, 1fr);
@@ -836,12 +893,25 @@ h1 {
   padding: clamp(0.48rem, 0.86vw, 0.78rem);
   border: 2px solid #6b4723;
   border-radius: 10px;
+  overflow: hidden;
   background:
     radial-gradient(circle at 30% 24%, rgba(255, 255, 255, 0.5), transparent 20%),
     radial-gradient(circle at 30% 24%, var(--die-body), var(--die-body) 56%, var(--die-shadow) 100%);
   box-shadow: 0 9px 0 var(--die-shadow), 0 18px 24px rgba(0, 0, 0, 0.34), inset -7px -8px 13px rgba(0, 0, 0, 0.18);
   cursor: pointer;
   transition: transform var(--duration-fast) ease, box-shadow var(--duration-fast) ease, background var(--duration-fast) ease;
+}
+
+.die::before,
+.die-face::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: var(--die-texture);
+  opacity: var(--die-texture-opacity);
+  mix-blend-mode: var(--die-texture-blend);
 }
 
 .die:hover:not(:disabled),
@@ -875,6 +945,10 @@ h1 {
   transition: none;
 }
 
+.die.rolling::before {
+  display: none;
+}
+
 .die.rolling:hover:not(:disabled),
 .die.rolling.selected {
   transform: none;
@@ -901,6 +975,7 @@ h1 {
   padding: clamp(0.48rem, 0.86vw, 0.78rem);
   border: 2px solid #6b4723;
   border-radius: 10px;
+  overflow: hidden;
   background:
     radial-gradient(circle at 30% 24%, rgba(255, 255, 255, 0.5), transparent 20%),
     radial-gradient(circle at 30% 24%, var(--die-body), var(--die-body) 56%, var(--die-shadow) 100%);
@@ -942,6 +1017,8 @@ h1 {
 }
 
 .pip {
+  position: relative;
+  z-index: 1;
   width: clamp(0.6rem, 1.18vw, 0.9rem);
   height: clamp(0.6rem, 1.18vw, 0.9rem);
   place-self: center;
@@ -954,6 +1031,7 @@ h1 {
 }
 
 .pip.visible {
+  position: relative;
   background: radial-gradient(circle at 35% 35%, var(--pip-color), var(--pip-shadow));
   box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.16);
 }
@@ -970,6 +1048,36 @@ h1 {
 .pip-shape-triangle .pip.visible {
   border-radius: 0;
   clip-path: polygon(50% 0, 100% 100%, 0 100%);
+}
+
+.pip-shape-cross .pip.visible,
+.pip-shape-plus .pip.visible {
+  background: transparent;
+  box-shadow: none;
+}
+
+.pip-shape-cross .pip.visible::before,
+.pip-shape-cross .pip.visible::after,
+.pip-shape-plus .pip.visible::before,
+.pip-shape-plus .pip.visible::after {
+  content: "";
+  position: absolute;
+  inset: 42% 4%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--pip-shadow), var(--pip-color));
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.16);
+}
+
+.pip-shape-cross .pip.visible::before {
+  transform: rotate(45deg);
+}
+
+.pip-shape-cross .pip.visible::after {
+  transform: rotate(-45deg);
+}
+
+.pip-shape-plus .pip.visible::before {
+  transform: rotate(90deg);
 }
 
 .game-actions {
@@ -1373,7 +1481,7 @@ h1 {
 
 .customise-tabs {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 0.4rem;
   border-bottom: 2px solid rgba(42, 26, 16, 0.2);
 }
@@ -1692,10 +1800,9 @@ h1 {
 
   .top-bar {
     top: 0.85rem;
-    left: 0.85rem;
-    right: auto;
+    right: 0.85rem;
     display: flex;
-    justify-content: flex-start;
+    justify-content: flex-end;
   }
 
   .gold-display {
@@ -1911,11 +2018,16 @@ h1 {
     display: none;
   }
 
-  .mute-toggle {
+  .options-toggle {
     right: 0.85rem;
     bottom: 0.85rem;
-    min-height: 2.25rem;
-    font-size: 0.82rem;
+    width: 2.65rem;
+    height: 2.65rem;
+  }
+
+  .cog-icon {
+    width: 1.18rem;
+    height: 1.18rem;
   }
 
   .rules-dialog {
@@ -2067,13 +2179,13 @@ h1 {
   }
 
   .customise-tabs {
-    grid-template-columns: 1fr;
-    border-bottom: 0;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
   .customise-tabs button {
-    border: 1px solid rgba(42, 26, 16, 0.2);
-    border-radius: var(--radius-small);
+    min-width: 0;
+    padding-inline: 0.35rem;
+    font-size: 0.86rem;
   }
 
   .customise-options {
@@ -2109,6 +2221,18 @@ h1 {
 
   .game-over-actions {
     width: min(100%, 14rem);
+  }
+}
+
+@media (max-width: 360px) {
+  .customise-tabs.tabs-count-4 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    border-bottom: 0;
+  }
+
+  .customise-tabs.tabs-count-4 button {
+    border: 1px solid rgba(42, 26, 16, 0.2);
+    border-radius: var(--radius-small);
   }
 }
 
