@@ -1,6 +1,6 @@
 import type { Die, DieValue } from "../game/types";
 import type { CSSProperties } from "react";
-import { defaultCustomization, getColorOption, type DiceCustomization } from "../customization/diceCustomization";
+import { defaultCustomization, getColorOption, getTextureOption, type DiceCustomization } from "../customization/diceCustomization";
 
 const pipMap: Record<DieValue, number[]> = {
   1: [4],
@@ -49,12 +49,16 @@ export function Dice({
 }: Props) {
   const body = getColorOption(customization.body);
   const pip = getColorOption(customization.pipColor);
+  const texture = getTextureOption(customization.texture);
   const className = `die pip-shape-${customization.pipShape} ${compact ? "die-compact" : ""} ${die.selected ? "selected" : ""} ${rolling ? "rolling" : ""}`;
   const style = {
     "--die-body": body.value,
     "--die-shadow": body.shadow,
     "--pip-color": pip.value,
     "--pip-shadow": pip.shadow,
+    "--die-texture": texture.overlay,
+    "--die-texture-opacity": texture.opacity,
+    "--die-texture-blend": texture.blendMode,
     "--roll-axis-x": rollMotion?.axisX ?? "1",
     "--roll-axis-y": rollMotion?.axisY ?? "0.72",
     "--roll-axis-z": rollMotion?.axisZ ?? "0.38",
