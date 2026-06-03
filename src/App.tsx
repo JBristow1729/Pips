@@ -780,7 +780,7 @@ export function App() {
 
     if (screen === "host") {
       return (
-        <main className="menu-screen centered menu-lobby">
+        <main className="menu-screen centered menu-lobby host-loading-screen">
           <div className="top-bar" aria-label="Player wallet">
             <GoldDisplay gold={gold} />
           </div>

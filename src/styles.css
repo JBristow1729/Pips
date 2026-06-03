@@ -2055,6 +2055,15 @@ h1 {
     align-content: start;
   }
 
+  .menu-lobby.host-loading-screen {
+    align-content: center;
+  }
+
+  .menu-lobby.host-loading-screen .host-loading-panel {
+    justify-self: center;
+    margin-inline: auto;
+  }
+
   .menu-lobby .lobby-panel {
     width: min(100%, 360px);
     max-height: none;
