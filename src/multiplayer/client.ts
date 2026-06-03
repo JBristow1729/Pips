@@ -1,6 +1,9 @@
 import type { ClientMessage, ServerMessage } from "./types";
 import type { DiceCustomization } from "../customization/diceCustomization";
 
+const multiplayerWakeupMessage = "Multiplayer services may take up to a minute to wake up";
+const multiplayerConnectionTimeoutMs = 60_000;
+
 export type MultiplayerConnection = {
   send: (message: ClientMessage) => void;
   close: () => void;
@@ -60,21 +63,23 @@ export function connectMultiplayerLobby(
   let opened = false;
   let closedByClient = false;
   let reportedError = false;
+  onError(multiplayerWakeupMessage);
   const reportConnectionError = () => {
     if (reportedError) return;
     reportedError = true;
-    onError("Could not connect to multiplayer backend. Start it with npm run dev:multiplayer.");
+    onError(`Could not connect to multiplayer backend. ${multiplayerWakeupMessage}.`);
   };
   const timeout = window.setTimeout(() => {
     if (!opened) {
       reportConnectionError();
       socket.close();
     }
-  }, 4000);
+  }, multiplayerConnectionTimeoutMs);
 
   socket.addEventListener("open", () => {
     opened = true;
     window.clearTimeout(timeout);
+    onError("");
     while (pendingMessages.length > 0) {
       socket.send(pendingMessages.shift() ?? "");
     }
