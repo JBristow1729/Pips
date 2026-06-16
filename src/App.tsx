@@ -15,7 +15,17 @@ import type { LobbyState, PublicLobby, ServerMessage } from "./multiplayer/types
 import { createRandomCustomization, readCustomizationInventory, writeCustomizationInventory, type DiceCustomizationInventory } from "./customization/diceCustomization";
 import { readOptions, usernameMaxLength, validateUsername, writeOptions, type PlayerOptions } from "./storage/options";
 import { changeWallet, readWallet } from "./storage/wallet";
-import { logInWithIdentity, logOutIdentity, readIdentitySession, requestPasswordReset, signUpWithIdentity, type IdentitySession } from "./services/auth";
+import {
+  clearIdentityRedirectToken,
+  confirmIdentityEmail,
+  logInWithIdentity,
+  logOutIdentity,
+  readIdentityRedirectToken,
+  readIdentitySession,
+  requestPasswordReset,
+  signUpWithIdentity,
+  type IdentitySession
+} from "./services/auth";
 import {
   addFriend,
   addRecentPlayer,
@@ -53,7 +63,7 @@ type MultiplayerConnectStatus = "idle" | "connecting" | "failed";
 type AccountDialogMode = "signup" | "login" | null;
 type InviteNotice = "in-game" | "full" | "sent" | null;
 
-const appVersion = "0.9.2";
+const appVersion = "0.9.3";
 const multiplayerRetryMs = 5_000;
 const multiplayerUnavailableMs = 120_000;
 const rollBaseDuration = 1.3;
@@ -446,6 +456,7 @@ export function App() {
   const [accountDialogMode, setAccountDialogMode] = useState<AccountDialogMode>(null);
   const [accountError, setAccountError] = useState("");
   const [accountNotice, setAccountNotice] = useState<string | null>(null);
+  const [identityNotice, setIdentityNotice] = useState<string | null>(null);
   const [session, setSession] = useState<IdentitySession | null>(() => readIdentitySession());
   const [profile, setProfile] = useState<PlayerProfile | null>(() => readCachedProfile());
   const [friendsOpen, setFriendsOpen] = useState(false);
@@ -532,6 +543,41 @@ export function App() {
       if (remoteSyncTimerRef.current !== null) window.clearTimeout(remoteSyncTimerRef.current);
       connectionRef.current?.close();
     };
+  }, []);
+
+  useEffect(() => {
+    const { confirmationToken, recoveryToken, accessToken } = readIdentityRedirectToken();
+    if (!confirmationToken && !recoveryToken && !accessToken) return;
+
+    if (confirmationToken) {
+      confirmIdentityEmail(confirmationToken)
+        .then((nextSession) => {
+          setSession(nextSession);
+          const cachedProfile = readCachedProfile();
+          if (cachedProfile) {
+            linkRemoteAccount(cachedProfile.id)
+              .then((linkedProfile) => setProfile(linkedProfile))
+              .catch(() => undefined);
+          }
+          setAccountDialogMode(null);
+          setAccountError("");
+          setAccountNotice(null);
+          setIdentityNotice("Thanks for verifying your email. You are now logged in.");
+        })
+        .catch(() => {
+          setIdentityNotice("We could not verify that email link. Please try logging in again or request a new verification email.");
+        })
+        .finally(clearIdentityRedirectToken);
+      return;
+    }
+
+    if (recoveryToken) {
+      setIdentityNotice("Password recovery links are not fully supported in-game yet. Please return to Log In and request a new reset if needed.");
+      clearIdentityRedirectToken();
+      return;
+    }
+
+    clearIdentityRedirectToken();
   }, []);
 
   useEffect(() => {
@@ -1632,6 +1678,9 @@ export function App() {
           onForgot={forgotPassword}
           onClose={() => setAccountDialogMode(null)}
         />
+      )}
+      {identityNotice && (
+        <Dialog title={identityNotice} onNo={() => setIdentityNotice(null)} noLabel="OK" />
       )}
       {friendsOpen && (
         <FriendsDialog
