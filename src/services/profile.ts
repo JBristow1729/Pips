@@ -39,7 +39,7 @@ export function setLocalClientId(id: string) {
 
 export async function fetchProfile() {
   const body = await requestProfile<{ profile: PlayerProfile | null }>("/.netlify/functions/pips-profile?action=profile");
-  if (body.profile) writeCachedProfile(body.profile);
+  writeCachedProfile(body.profile);
   return body.profile;
 }
 

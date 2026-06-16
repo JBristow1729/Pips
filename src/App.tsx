@@ -768,14 +768,18 @@ export function App() {
     fetchProfile()
       .then((remote) => {
         if (!remote) {
-          if (!cached && options.username.trim()) {
-            setRemoteUsername(options.username.trim(), gold, customizationInventory)
-              .then((restored) => {
-                setProfile(restored);
-                writeCachedProfile(restored);
-              })
-              .catch(() => undefined);
-          }
+          setProfile(null);
+          writeCachedProfile(null);
+          setFriends([]);
+          setRecents([]);
+          setFriendRequests([]);
+          setSearchResults([]);
+          setProfileStatuses({});
+          setOptions((current) => {
+            const next = { ...current, username: "" };
+            writeOptions(next);
+            return next;
+          });
           return;
         }
         setProfile(remote);
@@ -796,7 +800,12 @@ export function App() {
     remoteSyncTimerRef.current = window.setTimeout(() => {
       syncRemoteProfile(gold, customizationInventory)
         .then((remote) => setProfile(remote))
-        .catch(() => undefined);
+        .catch((error) => {
+          if (error instanceof Error && error.message === "Set a username first.") {
+            setProfile(null);
+            writeCachedProfile(null);
+          }
+        });
     }, 800);
   }, [profile?.id, gold, customizationInventory]);
 
