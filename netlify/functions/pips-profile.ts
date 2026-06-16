@@ -24,13 +24,15 @@ const handler: Handler = async (event, context) => {
   try {
     const user = context.clientContext?.user;
     const clientId = event.headers["x-pips-client-id"] ?? event.headers["X-Pips-Client-Id"];
-    const actorId = user?.sub ?? clientId;
+    const profileId = event.headers["x-pips-profile-id"] ?? event.headers["X-Pips-Profile-Id"];
+    const actorIds = actorCandidates(user?.sub ?? null, profileId, clientId);
+    const actorId = actorIds[0];
     const action = event.queryStringParameters?.action ?? "profile";
 
     if (!actorId) return json({ error: "A local client id or Netlify Identity session is required." }, 401);
 
     if (event.httpMethod === "GET" && action === "profile") {
-      const profile = await getProfileByActor(actorId, user?.sub ?? null);
+      const profile = await getProfileByActor(actorIds, user?.sub ?? null);
       return json({ profile });
     }
 
@@ -44,19 +46,19 @@ const handler: Handler = async (event, context) => {
 
     if (event.httpMethod === "PATCH" && action === "profile") {
       const body = parseBody<{ gold?: number; customization?: DiceCustomizationInventory }>(event);
-      const profile = await updateProfile(actorId, user?.sub ?? null, body.gold, body.customization);
+      const profile = await updateProfile(actorIds, user?.sub ?? null, body.gold, body.customization);
       return json({ profile });
     }
 
     if (event.httpMethod === "POST" && action === "link-account") {
       if (!user?.sub) return json({ error: "Log in before linking this profile." }, 401);
       const body = parseBody<{ localId?: string }>(event);
-      const profile = await linkAccount(user.sub, body.localId ?? actorId);
+      const profile = await linkAccount(user.sub, body.localId ?? profileId ?? clientId ?? actorId);
       return json({ profile });
     }
 
     if (event.httpMethod === "GET" && action === "friends") {
-      const profile = await requireProfile(actorId, user?.sub ?? null);
+      const profile = await requireProfile(actorIds, user?.sub ?? null);
       const friends = await listFriends(profile.id);
       const recents = await listRecents(profile.id);
       const requests = await listFriendRequests(profile);
@@ -64,14 +66,14 @@ const handler: Handler = async (event, context) => {
     }
 
     if (event.httpMethod === "GET" && action === "search") {
-      const profile = await requireProfile(actorId, user?.sub ?? null);
+      const profile = await requireProfile(actorIds, user?.sub ?? null);
       const query = event.queryStringParameters?.q ?? "";
       const results = await searchProfiles(profile.id, query);
       return json({ results });
     }
 
     if (event.httpMethod === "POST" && action === "friend") {
-      const profile = await requireProfile(actorId, user?.sub ?? null);
+      const profile = await requireProfile(actorIds, user?.sub ?? null);
       const body = parseBody<{ friendId?: string }>(event);
       if (!body.friendId) return json({ error: "Friend id is required." }, 400);
       await addFriend(profile.id, body.friendId);
@@ -79,7 +81,7 @@ const handler: Handler = async (event, context) => {
     }
 
     if (event.httpMethod === "POST" && action === "friend-request") {
-      const profile = await requireProfile(actorId, user?.sub ?? null);
+      const profile = await requireProfile(actorIds, user?.sub ?? null);
       const body = parseBody<{ friendId?: string }>(event);
       if (!body.friendId) return json({ error: "Friend id is required." }, 400);
       await requestFriend(profile.id, body.friendId);
@@ -87,7 +89,7 @@ const handler: Handler = async (event, context) => {
     }
 
     if (event.httpMethod === "PATCH" && action === "friend-request") {
-      const profile = await requireProfile(actorId, user?.sub ?? null);
+      const profile = await requireProfile(actorIds, user?.sub ?? null);
       const body = parseBody<{ friendId?: string; accepted?: boolean }>(event);
       if (!body.friendId) return json({ error: "Friend id is required." }, 400);
       await answerFriendRequest(profile, body.friendId, Boolean(body.accepted));
@@ -95,7 +97,7 @@ const handler: Handler = async (event, context) => {
     }
 
     if (event.httpMethod === "DELETE" && action === "friend") {
-      const profile = await requireProfile(actorId, user?.sub ?? null);
+      const profile = await requireProfile(actorIds, user?.sub ?? null);
       const body = parseBody<{ friendId?: string }>(event);
       if (!body.friendId) return json({ error: "Friend id is required." }, 400);
       await removeFriend(profile.id, body.friendId);
@@ -103,7 +105,7 @@ const handler: Handler = async (event, context) => {
     }
 
     if (event.httpMethod === "POST" && action === "recent") {
-      const profile = await requireProfile(actorId, user?.sub ?? null);
+      const profile = await requireProfile(actorIds, user?.sub ?? null);
       const body = parseBody<{ otherId?: string }>(event);
       if (!body.otherId) return json({ error: "Recent player id is required." }, 400);
       await addRecent(profile.id, body.otherId);
@@ -128,14 +130,18 @@ function getPool() {
   return pool;
 }
 
-async function getProfileByActor(actorId: string, identityId: string | null): Promise<Profile | null> {
+async function getProfileByActor(actorIds: string[], identityId: string | null): Promise<Profile | null> {
   const db = getPool();
-  const { rows } = await db.query("SELECT * FROM pips_profiles WHERE id = $1 OR identity_id = $2 LIMIT 1", [actorId, identityId]);
+  const ids = padActorIds(actorIds);
+  const { rows } = await db.query(
+    "SELECT * FROM pips_profiles WHERE id = $1 OR id = $2 OR id = $3 OR identity_id = $4 LIMIT 1",
+    [ids[0], ids[1], ids[2], identityId]
+  );
   return rows[0] ? toProfile(rows[0]) : null;
 }
 
-async function requireProfile(actorId: string, identityId: string | null): Promise<Profile> {
-  const profile = await getProfileByActor(actorId, identityId);
+async function requireProfile(actorIds: string[], identityId: string | null): Promise<Profile> {
+  const profile = await getProfileByActor(actorIds, identityId);
   if (!profile) throw new Error("Set a username first.");
   return profile;
 }
@@ -145,7 +151,7 @@ async function assignUsername(actorId: string, identityId: string | null, userna
   const search = normalizeUsername(username);
   const hash = await firstAvailableHash(search, actorId);
   if (!hash) throw new Error("That username is fully taken. Please choose another.");
-  const existing = await getProfileByActor(actorId, identityId);
+  const existing = await getProfileByActor([actorId], identityId);
   const profileId = existing?.id ?? actorId;
   const { rows } = await db.query(
     `INSERT INTO pips_profiles (id, identity_id, username, username_search, friend_hash, gold, customization)
@@ -176,8 +182,8 @@ async function firstAvailableHash(usernameSearch: string, actorId: string) {
   return "";
 }
 
-async function updateProfile(actorId: string, identityId: string | null, gold?: number, customization?: DiceCustomizationInventory): Promise<Profile> {
-  const profile = await requireProfile(actorId, identityId);
+async function updateProfile(actorIds: string[], identityId: string | null, gold?: number, customization?: DiceCustomizationInventory): Promise<Profile> {
+  const profile = await requireProfile(actorIds, identityId);
   const db = getPool();
   const { rows } = await db.query(
     `UPDATE pips_profiles
@@ -194,7 +200,7 @@ async function updateProfile(actorId: string, identityId: string | null, gold?: 
 
 async function linkAccount(identityId: string, localId: string): Promise<Profile> {
   const db = getPool();
-  const existingAccount = await getProfileByActor(identityId, identityId);
+  const existingAccount = await getProfileByActor([identityId], identityId);
   if (existingAccount) return existingAccount;
   const { rows } = await db.query(
     "UPDATE pips_profiles SET id = $1, identity_id = $1, updated_at = NOW() WHERE id = $2 RETURNING *",
@@ -337,6 +343,15 @@ async function answerFriendRequest(profile: Profile, friendId: string, accepted:
 function profileIds(profile: Profile) {
   const ids = [...new Set([profile.id, profile.identityId].filter(Boolean))] as string[];
   return ids.length === 1 ? [ids[0], ids[0]] : ids;
+}
+
+function actorCandidates(...ids: Array<string | string[] | null | undefined>) {
+  return [...new Set(ids.flat().filter((id): id is string => typeof id === "string" && id.length > 0))];
+}
+
+function padActorIds(ids: string[]) {
+  if (ids.length === 0) return ["", "", ""];
+  return [ids[0], ids[1] ?? ids[0], ids[2] ?? ids[0]];
 }
 
 async function addRecent(profileId: string, otherId: string) {

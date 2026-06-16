@@ -23,6 +23,11 @@ const localProfileKey = "pips-profile";
 export function getLocalClientId() {
   const current = localStorage.getItem(localClientIdKey);
   if (current) return current;
+  const cached = readCachedProfile();
+  if (cached?.id.startsWith("local-")) {
+    localStorage.setItem(localClientIdKey, cached.id);
+    return cached.id;
+  }
   const next = `local-${crypto.randomUUID()}`;
   localStorage.setItem(localClientIdKey, next);
   return next;
@@ -132,6 +137,8 @@ async function requestProfile<T>(url: string, init: RequestInit = {}): Promise<T
   const headers = new Headers(init.headers);
   headers.set("content-type", "application/json");
   headers.set("x-pips-client-id", getLocalClientId());
+  const cachedProfileId = readCachedProfile()?.id;
+  if (cachedProfileId) headers.set("x-pips-profile-id", cachedProfileId);
   if (session?.access_token) headers.set("authorization", `Bearer ${session.access_token}`);
   const response = await fetch(url, { ...init, headers });
   if (!response.ok) {
