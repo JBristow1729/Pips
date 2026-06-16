@@ -1,4 +1,4 @@
-const CACHE_NAME = "pips-v0.9.3";
+const CACHE_NAME = "pips-v0.9.4";
 const APP_SHELL = ["/", "/index.html", "/manifest.webmanifest", "/pwa/icon.svg", "/pwa/maskable-icon.svg", "/pwa/apple-touch-icon.svg"];
 
 self.addEventListener("install", (event) => {

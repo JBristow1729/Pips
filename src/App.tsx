@@ -63,7 +63,7 @@ type MultiplayerConnectStatus = "idle" | "connecting" | "failed";
 type AccountDialogMode = "signup" | "login" | null;
 type InviteNotice = "in-game" | "full" | "sent" | null;
 
-const appVersion = "0.9.3";
+const appVersion = "0.9.4";
 const multiplayerRetryMs = 5_000;
 const multiplayerUnavailableMs = 120_000;
 const rollBaseDuration = 1.3;
@@ -216,10 +216,7 @@ function OptionsDialog({
             {session ? (
               <MenuButton variant="small" onClick={onLogout}>Log Out</MenuButton>
             ) : (
-              <>
-                <MenuButton variant="small" onClick={() => onAccount("signup")}>Create Account</MenuButton>
-                <MenuButton variant="small" onClick={() => onAccount("login")}>Log In</MenuButton>
-              </>
+              <MenuButton variant="small" onClick={() => onAccount("signup")}>Link Account</MenuButton>
             )}
           </div>
         </div>
@@ -280,6 +277,7 @@ function AccountDialog({
   notice,
   onSubmit,
   onForgot,
+  onSwitchToLogin,
   onClose
 }: {
   mode: Exclude<AccountDialogMode, null>;
@@ -287,6 +285,7 @@ function AccountDialog({
   notice: string | null;
   onSubmit: (email: string, password: string) => void;
   onForgot: (email: string) => void;
+  onSwitchToLogin: () => void;
   onClose: () => void;
 }) {
   const [email, setEmail] = useState("");
@@ -337,6 +336,14 @@ function AccountDialog({
             Forgot password?
           </button>
         )}
+        {mode === "signup" && (
+          <p className="account-inline-prompt">
+            Already have an account?{" "}
+            <button className="text-link" type="button" onClick={onSwitchToLogin}>
+              Log In
+            </button>
+          </p>
+        )}
         <div className="dialog-actions">
           <MenuButton variant="small" onClick={onClose}>Cancel</MenuButton>
           <MenuButton variant="small" type="submit" disabled={invalid}>{mode === "signup" ? "OK" : "Log In"}</MenuButton>
@@ -373,7 +380,7 @@ function FriendsDialog({
     <div className="dialog-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
       <section className="friends-dialog" role="dialog" aria-modal="true" aria-labelledby="friends-title" onMouseDown={(event) => event.stopPropagation()}>
         <div className="customise-heading">
-          <h2 id="friends-title">Friends</h2>
+          <h2 id="friends-title">Profile</h2>
         </div>
         <div className="customise-tabs tabs-count-3">
           <button className={tab === "friends" ? "active" : ""} onClick={() => setTab("friends")}>Friends</button>
@@ -771,7 +778,7 @@ export function App() {
         await signUpWithIdentity(email, password);
         setAccountDialogMode(null);
         setAccountPromptOpen(false);
-        setAccountNotice("Account created. Please check your email to verify it before logging in.");
+        setIdentityNotice("Please verify your e-mail to complete your login.");
         return;
       }
       const nextSession = await logInWithIdentity(email, password);
@@ -1553,7 +1560,7 @@ export function App() {
       <button
         className="friends-toggle"
         type="button"
-        aria-label="Friends"
+        aria-label={profile ? `Profile ${profile.username} number ${profile.hash}` : "Profile"}
         onClick={() => {
           playTap();
           if (!profile) {
@@ -1564,13 +1571,15 @@ export function App() {
         }}
       >
         <svg className="friends-icon" viewBox="0 0 48 48" aria-hidden="true" focusable="false">
-          <circle cx="24" cy="16" r="7" />
-          <circle cx="13" cy="22" r="5.5" />
-          <circle cx="35" cy="22" r="5.5" />
-          <path d="M12 39c1.2-7 5.5-11 12-11s10.8 4 12 11H12Z" />
-          <path d="M3.5 38c0.9-5.5 4.3-8.7 9.4-8.7 3 0 5.4 1 7 2.8-2 1.7-3.3 3.7-4 5.9H3.5Z" />
-          <path d="M32.1 38c-0.7-2.2-2-4.2-4-5.9 1.6-1.8 4-2.8 7-2.8 5.1 0 8.5 3.2 9.4 8.7H32.1Z" />
+          <circle cx="24" cy="15" r="8" />
+          <path d="M10 40c1.4-9.2 6.4-14 14-14s12.6 4.8 14 14H10Z" />
         </svg>
+        {profile && (
+          <span className="profile-toggle-text">
+            <strong>{profile.username}</strong>
+            <small>#{profile.hash}</small>
+          </span>
+        )}
       </button>
       {foundGold && (
         <Dialog title="You found 10g..." onNo={() => setFoundGold(null)} noLabel="OK">
@@ -1659,7 +1668,7 @@ export function App() {
       )}
       {accountPromptOpen && (
         <Dialog
-          title="Would you like to create an account? This allows cross-platform play."
+          title="Would you like to link an account? This allows cross-platform play."
           onYes={() => {
             setAccountPromptOpen(false);
             setAccountError("");
@@ -1676,6 +1685,11 @@ export function App() {
           notice={accountNotice}
           onSubmit={submitAccount}
           onForgot={forgotPassword}
+          onSwitchToLogin={() => {
+            setAccountError("");
+            setAccountNotice(null);
+            setAccountDialogMode("login");
+          }}
           onClose={() => setAccountDialogMode(null)}
         />
       )}
