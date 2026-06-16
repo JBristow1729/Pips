@@ -51,7 +51,7 @@ type MultiplayerConnectStatus = "idle" | "connecting" | "failed";
 type AccountDialogMode = "signup" | "login" | null;
 type InviteNotice = "in-game" | "full" | "sent" | null;
 
-const appVersion = "0.9.0";
+const appVersion = "0.9.1";
 const multiplayerRetryMs = 5_000;
 const multiplayerUnavailableMs = 120_000;
 const rollBaseDuration = 1.3;
@@ -245,12 +245,14 @@ function UsernameDialog({ current, error, onSubmit, onClose }: { current: string
 function AccountDialog({
   mode,
   error,
+  notice,
   onSubmit,
   onForgot,
   onClose
 }: {
   mode: Exclude<AccountDialogMode, null>;
   error: string;
+  notice: string | null;
   onSubmit: (email: string, password: string) => void;
   onForgot: (email: string) => void;
   onClose: () => void;
@@ -260,28 +262,54 @@ function AccountDialog({
   const invalid = !/^\S+@\S+\.\S+$/.test(email) || password.length < 8;
   return (
     <div className="dialog-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-      <section className="account-dialog" role="dialog" aria-modal="true" aria-labelledby="account-title" onMouseDown={(event) => event.stopPropagation()}>
+      <form
+        className="account-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="account-title"
+        onMouseDown={(event) => event.stopPropagation()}
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (!invalid) onSubmit(email, password);
+        }}
+      >
         <h2 id="account-title">{mode === "signup" ? "Create Account" : "Log In"}</h2>
         <label className="option-field">
           <span>Email</span>
-          <input type="email" value={email} autoComplete="email" onChange={(event) => setEmail(event.currentTarget.value)} />
+          <input
+            type="email"
+            name="email"
+            value={email}
+            autoComplete={mode === "signup" ? "username email" : "username"}
+            required
+            onChange={(event) => setEmail(event.currentTarget.value)}
+          />
         </label>
         <label className="option-field">
           <span>Password</span>
-          <input type="password" value={password} autoComplete={mode === "signup" ? "new-password" : "current-password"} onChange={(event) => setPassword(event.currentTarget.value)} />
+          <input
+            type="password"
+            name="password"
+            value={password}
+            autoComplete={mode === "signup" ? "new-password" : "current-password"}
+            required
+            minLength={8}
+            onChange={(event) => setPassword(event.currentTarget.value)}
+          />
           <small>{password && password.length < 8 ? "Use at least 8 characters." : ""}</small>
         </label>
         {error && <p className="error">{error}</p>}
+        {notice && <p className="account-notice">{notice}</p>}
         {mode === "login" && (
-          <button className="text-link" type="button" onClick={() => onForgot(email)} disabled={!/^\S+@\S+\.\S+$/.test(email)}>
+          <button className="text-link" type="button" onClick={() => onForgot(email)}>
             Forgot password?
           </button>
         )}
         <div className="dialog-actions">
           <MenuButton variant="small" onClick={onClose}>Cancel</MenuButton>
-          <MenuButton variant="small" disabled={invalid} onClick={() => onSubmit(email, password)}>{mode === "signup" ? "Create" : "Log In"}</MenuButton>
+          <MenuButton variant="small" type="submit" disabled={invalid}>{mode === "signup" ? "OK" : "Log In"}</MenuButton>
         </div>
-      </section>
+      </form>
     </div>
   );
 }
@@ -395,6 +423,7 @@ export function App() {
   const [accountPromptOpen, setAccountPromptOpen] = useState(false);
   const [accountDialogMode, setAccountDialogMode] = useState<AccountDialogMode>(null);
   const [accountError, setAccountError] = useState("");
+  const [accountNotice, setAccountNotice] = useState<string | null>(null);
   const [session, setSession] = useState<IdentitySession | null>(() => readIdentitySession());
   const [profile, setProfile] = useState<PlayerProfile | null>(null);
   const [friendsOpen, setFriendsOpen] = useState(false);
@@ -630,6 +659,7 @@ export function App() {
 
   const saveUsername = async (username: string) => {
     setUsernameError("");
+    const isInitialUsername = !profile;
     try {
       const remote = await setRemoteUsername(username, gold, customizationInventory);
       setProfile(remote);
@@ -638,7 +668,7 @@ export function App() {
       writeOptions(nextOptions);
       setGold(remote.gold);
       setUsernameOpen(false);
-      if (!session) setAccountPromptOpen(true);
+      if (isInitialUsername && !session) setAccountPromptOpen(true);
     } catch (error) {
       setUsernameError(error instanceof Error ? error.message : "Could not set that username.");
     }
@@ -652,6 +682,7 @@ export function App() {
         await signUpWithIdentity(email, password);
         setAccountDialogMode(null);
         setAccountPromptOpen(false);
+        setAccountNotice("Account created. Please check your email to verify it before logging in.");
         return;
       }
       const nextSession = await logInWithIdentity(email, password);
@@ -659,15 +690,22 @@ export function App() {
       if (profile) setProfile(await linkRemoteAccount(profile.id));
       setAccountDialogMode(null);
       setAccountPromptOpen(false);
+      setAccountNotice(null);
     } catch (error) {
       setAccountError(error instanceof Error ? error.message : "Account service is unavailable.");
     }
   };
 
   const forgotPassword = async (email: string) => {
+    setAccountError("");
+    setAccountNotice(null);
+    if (!/^\S+@\S+\.\S+$/.test(email)) {
+      setAccountError("Enter your email first, then use Forgot password.");
+      return;
+    }
     try {
       await requestPasswordReset(email);
-      setAccountError("Password reset email sent.");
+      setAccountNotice("Password reset email sent.");
     } catch (error) {
       setAccountError(error instanceof Error ? error.message : "Could not send password reset email.");
     }
@@ -1176,19 +1214,24 @@ export function App() {
                 <div className="section-label">Players</div>
                 {["p1", "p2"].map((slot) => {
                   const player = lobby.players.find((candidate) => candidate.id === slot);
+                  if (!player) {
+                    return (
+                      <div className="lobby-player-card awaiting-player-card" key={slot}>
+                        <button className="invite-slot-button" type="button" aria-label="Invite friends" onClick={() => setFriendsOpen(true)}>
+                          +
+                        </button>
+                        <strong>Awaiting player</strong>
+                        <span>Open seat</span>
+                      </div>
+                    );
+                  }
                   return (
                     <div className={`lobby-player-card ${player?.ready ? "ready" : ""}`} key={slot}>
-                      <strong>{player ? `${player.username}${player.hash ? ` #${player.hash}` : ""}` : "Awaiting player"}</strong>
-                      <span>{player ? `${player.isHost ? "Host - " : ""}${player.ready ? "Ready" : "Not Ready"}` : "Open seat"}</span>
+                      <strong>{`${player.username}${player.hash ? ` #${player.hash}` : ""}`}</strong>
+                      <span>{`${player.isHost ? "Host - " : ""}${player.ready ? "Ready" : "Not Ready"}`}</span>
                     </div>
                   );
                 })}
-                {lobby.players.length === 1 && (
-                  <button className="lobby-player-card invite-friends-card" type="button" onClick={() => setFriendsOpen(true)}>
-                    <strong>Invite friends</strong>
-                    <span>Choose an online friend</span>
-                  </button>
-                )}
               </section>
               <section className={`lobby-config ${!isHost ? "locked" : ""}`} aria-label="Lobby settings">
                 <div className="section-label">Stakes</div>
@@ -1502,6 +1545,8 @@ export function App() {
           }}
           onAccount={(mode) => {
             setOptionsOpen(false);
+            setAccountError("");
+            setAccountNotice(null);
             setAccountDialogMode(mode);
           }}
           onLogout={logout}
@@ -1514,12 +1559,23 @@ export function App() {
           title="Would you like to create an account? This allows cross-platform play."
           onYes={() => {
             setAccountPromptOpen(false);
+            setAccountError("");
+            setAccountNotice(null);
             setAccountDialogMode("signup");
           }}
           onNo={() => setAccountPromptOpen(false)}
         />
       )}
-      {accountDialogMode && <AccountDialog mode={accountDialogMode} error={accountError} onSubmit={submitAccount} onForgot={forgotPassword} onClose={() => setAccountDialogMode(null)} />}
+      {accountDialogMode && (
+        <AccountDialog
+          mode={accountDialogMode}
+          error={accountError}
+          notice={accountNotice}
+          onSubmit={submitAccount}
+          onForgot={forgotPassword}
+          onClose={() => setAccountDialogMode(null)}
+        />
+      )}
       {friendsOpen && (
         <FriendsDialog
           friends={friends}

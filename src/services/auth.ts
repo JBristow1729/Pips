@@ -38,10 +38,15 @@ export async function signUpWithIdentity(email: string, password: string) {
 }
 
 export async function logInWithIdentity(email: string, password: string) {
+  const body = new URLSearchParams({
+    grant_type: "password",
+    username: email,
+    password
+  });
   const response = await fetch("/.netlify/identity/token", {
     method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ grant_type: "password", username: email, password })
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body
   });
   if (!response.ok) throw new Error(await identityError(response, "Could not log in."));
   const session = (await response.json()) as IdentitySession;
