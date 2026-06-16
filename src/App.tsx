@@ -53,7 +53,7 @@ type InviteNotice = "offline" | "in-game" | "full" | "sent" | { type: "rejected"
 type ProfileStatus = { online: boolean; inGame: boolean };
 
 const appVersion = "0.9.7";
-const wholegrainAccountsUrl = import.meta.env.VITE_WHOLEGRAIN_ACCOUNTS_URL ?? "https://wholegrainstudios.com/accounts/link";
+const wholegrainAccountsUrl = import.meta.env.VITE_WHOLEGRAIN_ACCOUNTS_URL ?? "https://wholegrainstudios.co.uk/accounts/link";
 const multiplayerRetryMs = 5_000;
 const multiplayerUnavailableMs = 120_000;
 const rollBaseDuration = 1.3;

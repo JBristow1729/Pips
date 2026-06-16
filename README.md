@@ -62,7 +62,7 @@ This app does not own Netlify Identity. Pips keeps local-first profiles and game
    - Set this environment variable on the Pips Netlify project:
 
 ```bash
-VITE_WHOLEGRAIN_ACCOUNTS_URL=https://wholegrainstudios.com/accounts/link
+VITE_WHOLEGRAIN_ACCOUNTS_URL=https://wholegrainstudios.co.uk/accounts/link
 ```
 
    - The Pips app redirects players there with:
@@ -83,7 +83,7 @@ WHOLEGRAIN_LINK_SECRET=<long random secret>
 5. From the Wholegrain Accounts service, after the user is logged in and confirms the link, call the Pips function:
 
 ```http
-POST https://pips.wholegrainstudios.com/.netlify/functions/pips-profile?action=link-wholegrain-account
+POST https://pips.wholegrainstudios.co.uk/.netlify/functions/pips-profile?action=link-wholegrain-account
 content-type: application/json
 x-wholegrain-link-secret: <WHOLEGRAIN_LINK_SECRET>
 
