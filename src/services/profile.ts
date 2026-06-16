@@ -1,5 +1,4 @@
 import type { DiceCustomizationInventory } from "../customization/diceCustomization";
-import { readIdentitySession } from "./auth";
 
 export type PlayerProfile = {
   id: string;
@@ -78,16 +77,6 @@ export async function syncRemoteProfile(gold: number, customization: DiceCustomi
   return body.profile;
 }
 
-export async function linkRemoteAccount(localId: string) {
-  const body = await requestProfile<{ profile: PlayerProfile }>("/.netlify/functions/pips-profile?action=link-account", {
-    method: "POST",
-    body: JSON.stringify({ localId })
-  });
-  setLocalClientId(body.profile.id);
-  writeCachedProfile(body.profile);
-  return body.profile;
-}
-
 export async function fetchFriendsAndRecents() {
   return requestProfile<{ friends: PlayerSummary[]; recents: PlayerSummary[]; requests: PlayerSummary[] }>("/.netlify/functions/pips-profile?action=friends");
 }
@@ -133,13 +122,11 @@ export async function addRecentPlayer(otherId: string) {
 }
 
 async function requestProfile<T>(url: string, init: RequestInit = {}): Promise<T> {
-  const session = readIdentitySession();
   const headers = new Headers(init.headers);
   headers.set("content-type", "application/json");
   headers.set("x-pips-client-id", getLocalClientId());
   const cachedProfileId = readCachedProfile()?.id;
   if (cachedProfileId) headers.set("x-pips-profile-id", cachedProfileId);
-  if (session?.access_token) headers.set("authorization", `Bearer ${session.access_token}`);
   const response = await fetch(url, { ...init, headers, cache: "no-store" });
   if (!response.ok) {
     const body = (await response.json().catch(() => null)) as { error?: string } | null;

@@ -16,25 +16,11 @@ import { createRandomCustomization, readCustomizationInventory, writeCustomizati
 import { readOptions, usernameMaxLength, validateUsername, writeOptions, type PlayerOptions } from "./storage/options";
 import { changeWallet, readWallet } from "./storage/wallet";
 import {
-  clearIdentityRedirectToken,
-  confirmIdentityEmail,
-  logInWithIdentity,
-  logOutIdentity,
-  readIdentityRedirectToken,
-  readIdentitySession,
-  recoverIdentityPassword,
-  requestPasswordReset,
-  signUpWithIdentity,
-  updateIdentityPassword,
-  type IdentitySession
-} from "./services/auth";
-import {
   answerFriendRequest,
   addRecentPlayer,
   fetchFriendsAndRecents,
   fetchProfile,
   getLocalClientId,
-  linkRemoteAccount,
   readCachedProfile,
   removeFriend,
   requestFriend,
@@ -63,11 +49,11 @@ type RollVisual = {
 type RematchDialog = "waiting" | "challenge" | "cancelled" | null;
 type TurnTimer = { playerId: PlayerId; endsAt: number; durationMs: number };
 type MultiplayerConnectStatus = "idle" | "connecting" | "failed";
-type AccountDialogMode = "signup" | "login" | null;
 type InviteNotice = "offline" | "in-game" | "full" | "sent" | { type: "rejected"; username: string } | null;
 type ProfileStatus = { online: boolean; inGame: boolean };
 
 const appVersion = "0.9.7";
+const wholegrainAccountsUrl = import.meta.env.VITE_WHOLEGRAIN_ACCOUNTS_URL ?? "https://wholegrainstudios.com/accounts/link";
 const multiplayerRetryMs = 5_000;
 const multiplayerUnavailableMs = 120_000;
 const rollBaseDuration = 1.3;
@@ -164,20 +150,16 @@ function RulesDialog({ onClose }: { onClose: () => void }) {
 function OptionsDialog({
   options,
   profile,
-  session,
   onApply,
   onSetUsername,
-  onAccount,
-  onLogout,
+  onLinkAccount,
   onClose
 }: {
   options: PlayerOptions;
   profile: PlayerProfile | null;
-  session: IdentitySession | null;
   onApply: (options: PlayerOptions) => void;
   onSetUsername: () => void;
-  onAccount: (mode: AccountDialogMode) => void;
-  onLogout: () => void;
+  onLinkAccount: () => void;
   onClose: () => void;
 }) {
   const updateSfx = (value: boolean) => {
@@ -217,14 +199,13 @@ function OptionsDialog({
             <MenuButton variant="small" onClick={onSetUsername}>{profile ? "Change Username" : "Set Username"}</MenuButton>
           </div>
           <div className="option-account-actions">
-            {session ? (
+            {profile?.identityId ? (
               <div className="option-field option-profile signed-in-row">
-                <span>Signed in as</span>
-                <strong>{session.user?.email ?? "Account"}</strong>
-                <MenuButton variant="small" onClick={onLogout}>Log Out</MenuButton>
+                <span>Wholegrain Account</span>
+                <strong>Linked</strong>
               </div>
             ) : (
-              <MenuButton variant="small" onClick={() => onAccount("login")}>Link Account</MenuButton>
+              <MenuButton variant="small" onClick={onLinkAccount}>Link Account</MenuButton>
             )}
           </div>
         </div>
@@ -255,13 +236,13 @@ function UsernameDialog({
   current,
   error,
   onSubmit,
-  onLogin,
+  onLinkAccount,
   onClose
 }: {
   current: string;
   error: string;
   onSubmit: (username: string) => void;
-  onLogin: () => void;
+  onLinkAccount: () => void;
   onClose: () => void;
 }) {
   const [username, setUsername] = useState(current);
@@ -282,168 +263,12 @@ function UsernameDialog({
         {!current && (
           <p className="account-inline-prompt">
             Already have an account?{" "}
-            <button className="text-link" type="button" onClick={onLogin}>
-              Log in.
+            <button className="text-link" type="button" onClick={onLinkAccount}>
+              Link Wholegrain Account.
             </button>
           </p>
         )}
       </section>
-    </div>
-  );
-}
-
-function AccountDialog({
-  mode,
-  error,
-  notice,
-  onSubmit,
-  onForgot,
-  onSwitchToLogin,
-  onSwitchToSignup,
-  onClose
-}: {
-  mode: Exclude<AccountDialogMode, null>;
-  error: string;
-  notice: string | null;
-  onSubmit: (email: string, password: string) => void;
-  onForgot: () => void;
-  onSwitchToLogin: () => void;
-  onSwitchToSignup: () => void;
-  onClose: () => void;
-}) {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const invalid = !/^\S+@\S+\.\S+$/.test(email) || password.length < 8;
-  return (
-    <div className="dialog-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-      <form
-        className="account-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="account-title"
-        onMouseDown={(event) => event.stopPropagation()}
-        onSubmit={(event) => {
-          event.preventDefault();
-          if (!invalid) onSubmit(email, password);
-        }}
-      >
-        <h2 id="account-title">{mode === "signup" ? "Create Account" : "Log In"}</h2>
-        <label className="option-field">
-          <span>Email</span>
-          <input
-            type="email"
-            name="email"
-            value={email}
-            autoComplete={mode === "signup" ? "username email" : "username"}
-            required
-            onChange={(event) => setEmail(event.currentTarget.value)}
-          />
-        </label>
-        <label className="option-field">
-          <span>Password</span>
-          <input
-            type="password"
-            name="password"
-            value={password}
-            autoComplete={mode === "signup" ? "new-password" : "current-password"}
-            required
-            minLength={8}
-            onChange={(event) => setPassword(event.currentTarget.value)}
-          />
-          <small>{password && password.length < 8 ? "Use at least 8 characters." : ""}</small>
-        </label>
-        {error && <p className="error">{error}</p>}
-        {notice && <p className="account-notice">{notice}</p>}
-        {mode === "login" && (
-          <button className="text-link" type="button" onClick={onForgot}>
-            Forgot password?
-          </button>
-        )}
-        {mode === "login" && (
-          <p className="account-inline-prompt">
-            Don't have an account?{" "}
-            <button className="text-link" type="button" onClick={onSwitchToSignup}>
-              Create one here!
-            </button>
-          </p>
-        )}
-        {mode === "signup" && (
-          <p className="account-inline-prompt">
-            Already have an account?{" "}
-            <button className="text-link" type="button" onClick={onSwitchToLogin}>
-              Log In
-            </button>
-          </p>
-        )}
-        <div className="dialog-actions">
-          <MenuButton variant="small" onClick={onClose}>Cancel</MenuButton>
-          <MenuButton variant="small" type="submit" disabled={invalid}>{mode === "signup" ? "OK" : "Log In"}</MenuButton>
-        </div>
-      </form>
-    </div>
-  );
-}
-
-function ForgotPasswordDialog({ error, notice, onSubmit, onClose }: { error: string; notice: string | null; onSubmit: (email: string) => void; onClose: () => void }) {
-  const [email, setEmail] = useState("");
-  const invalid = !/^\S+@\S+\.\S+$/.test(email);
-  return (
-    <div className="dialog-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-      <form
-        className="account-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="forgot-title"
-        onMouseDown={(event) => event.stopPropagation()}
-        onSubmit={(event) => {
-          event.preventDefault();
-          if (!invalid) onSubmit(email);
-        }}
-      >
-        <h2 id="forgot-title">Reset Password</h2>
-        <label className="option-field">
-          <span>Email</span>
-          <input type="email" name="email" value={email} autoComplete="username email" required onChange={(event) => setEmail(event.currentTarget.value)} />
-        </label>
-        {error && <p className="error">{error}</p>}
-        {notice && <p className="account-notice">{notice}</p>}
-        <div className="dialog-actions">
-          <MenuButton variant="small" onClick={onClose}>Cancel</MenuButton>
-          <MenuButton variant="small" type="submit" disabled={invalid}>OK</MenuButton>
-        </div>
-      </form>
-    </div>
-  );
-}
-
-function ResetPasswordDialog({ error, onSubmit, onClose }: { error: string; onSubmit: (password: string) => void; onClose: () => void }) {
-  const [password, setPassword] = useState("");
-  const invalid = password.length < 8;
-  return (
-    <div className="dialog-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-      <form
-        className="account-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="reset-title"
-        onMouseDown={(event) => event.stopPropagation()}
-        onSubmit={(event) => {
-          event.preventDefault();
-          if (!invalid) onSubmit(password);
-        }}
-      >
-        <h2 id="reset-title">Set New Password</h2>
-        <label className="option-field">
-          <span>New Password</span>
-          <input type="password" name="new-password" value={password} autoComplete="new-password" required minLength={8} onChange={(event) => setPassword(event.currentTarget.value)} />
-          <small>{password && invalid ? "Use at least 8 characters." : ""}</small>
-        </label>
-        {error && <p className="error">{error}</p>}
-        <div className="dialog-actions">
-          <MenuButton variant="small" onClick={onClose}>Cancel</MenuButton>
-          <MenuButton variant="small" type="submit" disabled={invalid}>OK</MenuButton>
-        </div>
-      </form>
     </div>
   );
 }
@@ -606,18 +431,6 @@ export function App() {
   const [usernameOpen, setUsernameOpen] = useState(false);
   const [usernameError, setUsernameError] = useState("");
   const [accountPromptOpen, setAccountPromptOpen] = useState(false);
-  const [accountDialogMode, setAccountDialogMode] = useState<AccountDialogMode>(null);
-  const [accountError, setAccountError] = useState("");
-  const [accountNotice, setAccountNotice] = useState<string | null>(null);
-  const [forgotPasswordOpen, setForgotPasswordOpen] = useState(false);
-  const [forgotPasswordError, setForgotPasswordError] = useState("");
-  const [forgotPasswordNotice, setForgotPasswordNotice] = useState<string | null>(null);
-  const [resetPasswordOpen, setResetPasswordOpen] = useState(false);
-  const [resetPasswordError, setResetPasswordError] = useState("");
-  const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
-  const [signedOutNoticeOpen, setSignedOutNoticeOpen] = useState(false);
-  const [identityNotice, setIdentityNotice] = useState<string | null>(null);
-  const [session, setSession] = useState<IdentitySession | null>(() => readIdentitySession());
   const [profile, setProfile] = useState<PlayerProfile | null>(() => readCachedProfile());
   const [friendsOpen, setFriendsOpen] = useState(false);
   const [friends, setFriends] = useState<PlayerSummary[]>([]);
@@ -712,49 +525,6 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    const { confirmationToken, recoveryToken, accessToken } = readIdentityRedirectToken();
-    if (!confirmationToken && !recoveryToken && !accessToken) return;
-
-    if (confirmationToken) {
-      confirmIdentityEmail(confirmationToken)
-        .then((nextSession) => {
-          setSession(nextSession);
-          const cachedProfile = readCachedProfile();
-          if (cachedProfile) {
-            linkRemoteAccount(cachedProfile.id)
-              .then((linkedProfile) => setProfile(linkedProfile))
-              .catch(() => undefined);
-          }
-          setAccountDialogMode(null);
-          setAccountError("");
-          setAccountNotice(null);
-          setIdentityNotice("Thanks for verifying your email. You are now logged in.");
-        })
-        .catch(() => {
-          setIdentityNotice("We could not verify that email link. Please try logging in again or request a new verification email.");
-        })
-        .finally(clearIdentityRedirectToken);
-      return;
-    }
-
-    if (recoveryToken) {
-      recoverIdentityPassword(recoveryToken)
-        .then((nextSession) => {
-          setSession(nextSession);
-          setResetPasswordOpen(true);
-          setResetPasswordError("");
-        })
-        .catch(() => {
-          setIdentityNotice("That password reset link is invalid or expired. Please request a new reset email.");
-        })
-        .finally(clearIdentityRedirectToken);
-      return;
-    }
-
-    clearIdentityRedirectToken();
-  }, []);
-
-  useEffect(() => {
     const cached = readCachedProfile();
     if (cached) {
       setProfile(cached);
@@ -792,7 +562,7 @@ export function App() {
         }
       })
       .catch(() => undefined);
-  }, [session]);
+  }, []);
 
   useEffect(() => {
     if (!profile) return;
@@ -968,68 +738,18 @@ export function App() {
       writeOptions(nextOptions);
       setGold(remote.gold);
       setUsernameOpen(false);
-      if (isInitialUsername && !session) setAccountPromptOpen(true);
+      if (isInitialUsername && !remote.identityId) setAccountPromptOpen(true);
     } catch (error) {
       setUsernameError(error instanceof Error ? error.message : "Could not set that username.");
     }
   };
 
-  const submitAccount = async (email: string, password: string) => {
-    if (!accountDialogMode) return;
-    setAccountError("");
-    try {
-      if (accountDialogMode === "signup") {
-        await signUpWithIdentity(email, password);
-        setAccountDialogMode(null);
-        setAccountPromptOpen(false);
-        setIdentityNotice("Please verify your e-mail to complete your login.");
-        return;
-      }
-      const nextSession = await logInWithIdentity(email, password);
-      setSession(nextSession);
-      if (profile) setProfile(await linkRemoteAccount(profile.id));
-      setAccountDialogMode(null);
-      setAccountPromptOpen(false);
-      setAccountNotice(null);
-    } catch (error) {
-      setAccountError(error instanceof Error ? error.message : "Account service is unavailable.");
-    }
-  };
-
-  const forgotPassword = async (email: string) => {
-    setForgotPasswordError("");
-    setForgotPasswordNotice(null);
-    if (!/^\S+@\S+\.\S+$/.test(email)) {
-      setForgotPasswordError("Enter a valid email address.");
-      return;
-    }
-    try {
-      await requestPasswordReset(email);
-      setForgotPasswordNotice("Password reset email sent.");
-    } catch (error) {
-      setForgotPasswordError(error instanceof Error ? error.message : "Could not send password reset email.");
-    }
-  };
-
-  const logout = () => {
-    logOutIdentity();
-    setSession(null);
-    setProfile(null);
-    setLogoutConfirmOpen(false);
-    setOptionsOpen(false);
-    setSignedOutNoticeOpen(true);
-  };
-
-  const submitNewPassword = async (password: string) => {
-    setResetPasswordError("");
-    try {
-      const nextSession = await updateIdentityPassword(password);
-      setSession(nextSession);
-      setResetPasswordOpen(false);
-      setIdentityNotice("Your password has been updated.");
-    } catch (error) {
-      setResetPasswordError(error instanceof Error ? error.message : "Could not update your password.");
-    }
+  const openWholegrainAccountLink = () => {
+    const url = new URL(wholegrainAccountsUrl);
+    url.searchParams.set("game", "pips");
+    url.searchParams.set("gameAccountId", profile?.id ?? getLocalClientId());
+    url.searchParams.set("returnTo", window.location.href);
+    window.location.href = url.toString();
   };
 
   const requireProfileForMultiplayer = () => {
@@ -1203,10 +923,6 @@ export function App() {
     setOptionsOpen(false);
     setUsernameOpen(false);
     setAccountPromptOpen(false);
-    setAccountDialogMode(null);
-    setForgotPasswordOpen(false);
-    setResetPasswordOpen(false);
-    setLogoutConfirmOpen(false);
     setFriendsOpen(false);
   };
 
@@ -1923,21 +1639,14 @@ export function App() {
         <OptionsDialog
           options={options}
           profile={profile}
-          session={session}
           onApply={applyOptions}
           onSetUsername={() => {
             setOptionsOpen(false);
             setUsernameOpen(true);
           }}
-          onAccount={(mode) => {
+          onLinkAccount={() => {
             setOptionsOpen(false);
-            setAccountError("");
-            setAccountNotice(null);
-            setAccountDialogMode(mode);
-          }}
-          onLogout={() => {
-            setOptionsOpen(false);
-            setLogoutConfirmOpen(true);
+            openWholegrainAccountLink();
           }}
           onClose={() => setOptionsOpen(false)}
         />
@@ -1947,12 +1656,10 @@ export function App() {
           current={profile?.username ?? ""}
           error={usernameError}
           onSubmit={saveUsername}
-          onLogin={() => {
+          onLinkAccount={() => {
             setUsernameOpen(false);
             setUsernameError("");
-            setAccountError("");
-            setAccountNotice(null);
-            setAccountDialogMode("login");
+            openWholegrainAccountLink();
           }}
           onClose={() => setUsernameOpen(false)}
         />
@@ -1962,71 +1669,10 @@ export function App() {
           title="Would you like to link an account? This allows cross-platform play."
           onYes={() => {
             setAccountPromptOpen(false);
-            setAccountError("");
-            setAccountNotice(null);
-            setAccountDialogMode("login");
+            openWholegrainAccountLink();
           }}
           onNo={() => setAccountPromptOpen(false)}
         />
-      )}
-      {accountDialogMode && (
-        <AccountDialog
-          mode={accountDialogMode}
-          error={accountError}
-          notice={accountNotice}
-          onSubmit={submitAccount}
-          onForgot={() => {
-            setAccountDialogMode(null);
-            setForgotPasswordError("");
-            setForgotPasswordNotice(null);
-            setForgotPasswordOpen(true);
-          }}
-          onSwitchToLogin={() => {
-            setAccountError("");
-            setAccountNotice(null);
-            setAccountDialogMode("login");
-          }}
-          onSwitchToSignup={() => {
-            setAccountError("");
-            setAccountNotice(null);
-            setAccountDialogMode("signup");
-          }}
-          onClose={() => setAccountDialogMode(null)}
-        />
-      )}
-      {forgotPasswordOpen && (
-        <ForgotPasswordDialog
-          error={forgotPasswordError}
-          notice={forgotPasswordNotice}
-          onSubmit={forgotPassword}
-          onClose={() => {
-            setForgotPasswordOpen(false);
-            setAccountDialogMode("login");
-          }}
-        />
-      )}
-      {resetPasswordOpen && (
-        <ResetPasswordDialog
-          error={resetPasswordError}
-          onSubmit={submitNewPassword}
-          onClose={() => setResetPasswordOpen(false)}
-        />
-      )}
-      {logoutConfirmOpen && (
-        <Dialog
-          title="Are you sure you want to sign out?"
-          onYes={logout}
-          onNo={() => {
-            setLogoutConfirmOpen(false);
-            setOptionsOpen(true);
-          }}
-        />
-      )}
-      {signedOutNoticeOpen && (
-        <Dialog title="You have signed out." onNo={() => setSignedOutNoticeOpen(false)} noLabel="OK" />
-      )}
-      {identityNotice && (
-        <Dialog title={identityNotice} onNo={() => setIdentityNotice(null)} noLabel="OK" />
       )}
       {friendsOpen && (
         <FriendsDialog

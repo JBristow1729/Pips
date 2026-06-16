@@ -19,20 +19,27 @@ let pool: Pool | null = null;
 
 const usernameMaxLength = 12;
 
-const handler: Handler = async (event, context) => {
+const handler: Handler = async (event) => {
   if (event.httpMethod === "OPTIONS") return json({});
   try {
-    const user = context.clientContext?.user;
     const clientId = event.headers["x-pips-client-id"] ?? event.headers["X-Pips-Client-Id"];
     const profileId = event.headers["x-pips-profile-id"] ?? event.headers["X-Pips-Profile-Id"];
-    const actorIds = actorCandidates(user?.sub ?? null, profileId, clientId);
+    const actorIds = actorCandidates(profileId, clientId);
     const actorId = actorIds[0];
     const action = event.queryStringParameters?.action ?? "profile";
 
-    if (!actorId) return json({ error: "A local client id or Netlify Identity session is required." }, 401);
+    if (event.httpMethod === "POST" && action === "link-wholegrain-account") {
+      requireWholegrainLinkSecret(event);
+      const body = parseBody<{ identityId?: string; gameAccountId?: string }>(event);
+      if (!body.identityId || !body.gameAccountId) return json({ error: "Wholegrain identity id and Pips account id are required." }, 400);
+      const profile = await linkWholegrainAccount(body.identityId, body.gameAccountId);
+      return json({ profile });
+    }
+
+    if (!actorId) return json({ error: "A local client id is required." }, 401);
 
     if (event.httpMethod === "GET" && action === "profile") {
-      const profile = await getProfileByActor(actorIds, user?.sub ?? null);
+      const profile = await getProfileByActor(actorIds, null);
       return json({ profile });
     }
 
@@ -40,25 +47,18 @@ const handler: Handler = async (event, context) => {
       const body = parseBody<{ username?: string; gold?: number; customization?: DiceCustomizationInventory }>(event);
       const username = cleanUsername(body.username ?? "");
       if (!username) return json({ error: "Username is required." }, 400);
-      const profile = await assignUsername(actorId, user?.sub ?? null, username, body.gold, body.customization ?? null);
+      const profile = await assignUsername(actorId, null, username, body.gold, body.customization ?? null);
       return json({ profile });
     }
 
     if (event.httpMethod === "PATCH" && action === "profile") {
       const body = parseBody<{ gold?: number; customization?: DiceCustomizationInventory }>(event);
-      const profile = await updateProfile(actorIds, user?.sub ?? null, body.gold, body.customization);
-      return json({ profile });
-    }
-
-    if (event.httpMethod === "POST" && action === "link-account") {
-      if (!user?.sub) return json({ error: "Log in before linking this profile." }, 401);
-      const body = parseBody<{ localId?: string }>(event);
-      const profile = await linkAccount(user.sub, body.localId ?? profileId ?? clientId ?? actorId);
+      const profile = await updateProfile(actorIds, null, body.gold, body.customization);
       return json({ profile });
     }
 
     if (event.httpMethod === "GET" && action === "friends") {
-      const profile = await requireProfile(actorIds, user?.sub ?? null);
+      const profile = await requireProfile(actorIds, null);
       const friends = await listFriends(profile.id);
       const recents = await listRecents(profile.id);
       const requests = await listFriendRequests(profile);
@@ -66,14 +66,14 @@ const handler: Handler = async (event, context) => {
     }
 
     if (event.httpMethod === "GET" && action === "search") {
-      const profile = await requireProfile(actorIds, user?.sub ?? null);
+      const profile = await requireProfile(actorIds, null);
       const query = event.queryStringParameters?.q ?? "";
       const results = await searchProfiles(profile.id, query);
       return json({ results });
     }
 
     if (event.httpMethod === "POST" && action === "friend") {
-      const profile = await requireProfile(actorIds, user?.sub ?? null);
+      const profile = await requireProfile(actorIds, null);
       const body = parseBody<{ friendId?: string }>(event);
       if (!body.friendId) return json({ error: "Friend id is required." }, 400);
       await addFriend(profile.id, body.friendId);
@@ -81,7 +81,7 @@ const handler: Handler = async (event, context) => {
     }
 
     if (event.httpMethod === "POST" && action === "friend-request") {
-      const profile = await requireProfile(actorIds, user?.sub ?? null);
+      const profile = await requireProfile(actorIds, null);
       const body = parseBody<{ friendId?: string }>(event);
       if (!body.friendId) return json({ error: "Friend id is required." }, 400);
       await requestFriend(profile.id, body.friendId);
@@ -89,7 +89,7 @@ const handler: Handler = async (event, context) => {
     }
 
     if (event.httpMethod === "PATCH" && action === "friend-request") {
-      const profile = await requireProfile(actorIds, user?.sub ?? null);
+      const profile = await requireProfile(actorIds, null);
       const body = parseBody<{ friendId?: string; accepted?: boolean }>(event);
       if (!body.friendId) return json({ error: "Friend id is required." }, 400);
       await answerFriendRequest(profile, body.friendId, Boolean(body.accepted));
@@ -97,7 +97,7 @@ const handler: Handler = async (event, context) => {
     }
 
     if (event.httpMethod === "DELETE" && action === "friend") {
-      const profile = await requireProfile(actorIds, user?.sub ?? null);
+      const profile = await requireProfile(actorIds, null);
       const body = parseBody<{ friendId?: string }>(event);
       if (!body.friendId) return json({ error: "Friend id is required." }, 400);
       await removeFriend(profile.id, body.friendId);
@@ -105,7 +105,7 @@ const handler: Handler = async (event, context) => {
     }
 
     if (event.httpMethod === "POST" && action === "recent") {
-      const profile = await requireProfile(actorIds, user?.sub ?? null);
+      const profile = await requireProfile(actorIds, null);
       const body = parseBody<{ otherId?: string }>(event);
       if (!body.otherId) return json({ error: "Recent player id is required." }, 400);
       await addRecent(profile.id, body.otherId);
@@ -198,16 +198,18 @@ async function updateProfile(actorIds: string[], identityId: string | null, gold
   return toProfile(rows[0]);
 }
 
-async function linkAccount(identityId: string, localId: string): Promise<Profile> {
+async function linkWholegrainAccount(identityId: string, gameAccountId: string): Promise<Profile> {
   const db = getPool();
-  const existingAccount = await getProfileByActor([identityId], identityId);
-  if (existingAccount) return existingAccount;
+  const existingAccount = await getProfileByActor([], identityId);
+  if (existingAccount && existingAccount.id !== gameAccountId) {
+    throw new Error("That Wholegrain account is already linked to a different Pips profile.");
+  }
   const { rows } = await db.query(
-    "UPDATE pips_profiles SET id = $1, identity_id = $1, updated_at = NOW() WHERE id = $2 RETURNING *",
-    [identityId, localId]
+    "UPDATE pips_profiles SET identity_id = $1, updated_at = NOW() WHERE id = $2 AND (identity_id IS NULL OR identity_id = $1) RETURNING *",
+    [identityId, gameAccountId]
   );
   if (rows[0]) return toProfile(rows[0]);
-  throw new Error("No local profile exists to link.");
+  throw new Error("No unlinked Pips profile exists for that account id.");
 }
 
 async function listFriends(profileId: string) {
@@ -390,6 +392,13 @@ function clampGold(gold: unknown) {
 function parseBody<T>(event: HandlerEvent): T {
   if (!event.body) return {} as T;
   return JSON.parse(event.body) as T;
+}
+
+function requireWholegrainLinkSecret(event: HandlerEvent) {
+  const expected = process.env.WHOLEGRAIN_LINK_SECRET;
+  if (!expected) throw new Error("WHOLEGRAIN_LINK_SECRET is not configured.");
+  const provided = event.headers["x-wholegrain-link-secret"] ?? event.headers["X-Wholegrain-Link-Secret"];
+  if (provided !== expected) throw new Error("Not authorized to link this Pips profile.");
 }
 
 function toProfile(row: Record<string, unknown>): Profile {

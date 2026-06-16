@@ -45,19 +45,58 @@ Netlify settings:
 
 `netlify.toml` is included for SPA routing.
 
-## Netlify Identity And Database Setup
+## Wholegrain Accounts And Database Setup
 
-This app keeps login optional. Singleplayer works with local storage only. Multiplayer asks the player to set a username, then stores that username, the hidden four digit friend hash, purse, friends, recents, and shop/customization inventory in Netlify Database. Creating a Netlify Identity account is optional and links the profile to the Identity UID for cross-platform play.
+This app does not own Netlify Identity. Pips keeps local-first profiles and game-specific data, while the separate Wholegrain Studios Netlify project owns account creation, login, email confirmation, and password recovery. Pips links a profile to a central Wholegrain Identity UID only when the Wholegrain Accounts service calls its protected link endpoint.
 
-1. Enable Netlify Identity for the site:
-   - In Netlify, open the site dashboard.
+1. In the Wholegrain Studios Netlify project, enable Netlify Identity:
    - Go to **Project configuration > Identity**.
    - Enable Identity.
-   - Under registration settings, allow email/password registration.
-   - Enable email confirmation/verification so newly-created accounts must verify their email.
-   - Keep external providers disabled unless you want to add them later.
+   - Allow email/password registration.
+   - Enable confirmation emails and password recovery emails.
+   - Set email template URLs to the Wholegrain Studios account pages, not the Pips app.
 
-2. Enable Netlify Database:
+2. In the Pips Netlify project, keep Netlify Identity disabled unless another feature explicitly needs it.
+
+3. Point Pips at the central account-link page:
+   - Set this environment variable on the Pips Netlify project:
+
+```bash
+VITE_WHOLEGRAIN_ACCOUNTS_URL=https://wholegrainstudios.com/accounts/link
+```
+
+   - The Pips app redirects players there with:
+     - `game=pips`
+     - `gameAccountId=<the local Pips profile id>`
+     - `returnTo=<the current Pips URL>`
+
+4. Add the same secret to both Netlify projects:
+
+```bash
+WHOLEGRAIN_LINK_SECRET=<long random secret>
+```
+
+   - Store it on the Pips project so `netlify/functions/pips-profile.ts` can verify central link requests.
+   - Store it on the Wholegrain Studios project so the Accounts service can call Pips.
+   - Never expose this value to browser code or a `VITE_` variable.
+
+5. From the Wholegrain Accounts service, after the user is logged in and confirms the link, call the Pips function:
+
+```http
+POST https://pips.wholegrainstudios.com/.netlify/functions/pips-profile?action=link-wholegrain-account
+content-type: application/json
+x-wholegrain-link-secret: <WHOLEGRAIN_LINK_SECRET>
+
+{
+  "identityId": "<central Netlify Identity user.sub>",
+  "gameAccountId": "<Pips profile id from the link URL>"
+}
+```
+
+   - On success, redirect the player back to `returnTo`.
+   - For production, replace the raw `gameAccountId` URL handoff with a short-lived signed link token minted by Pips.
+
+6. Enable Netlify Database for Pips:
    - In the site dashboard, open **Database** and create/provision a database, or run:
 
 ```bash
@@ -69,7 +108,7 @@ netlify database init
      - `pips_friendships` for directed friend relationships.
      - `pips_recent_players` for recently played users.
 
-3. Apply migrations locally while using Netlify's local database:
+7. Apply migrations locally while using Netlify's local database:
 
 ```bash
 netlify dev
@@ -78,18 +117,14 @@ netlify database migrations apply
 
 Production and deploy-preview migrations are applied by Netlify during deploy when migration files live under `netlify/database/migrations`.
 
-4. Function/API notes:
+8. Function/API notes:
    - `netlify/functions/pips-profile.ts` uses `NETLIFY_DB_URL` from Netlify Database.
-   - Authenticated requests send the Netlify Identity bearer token.
-   - Unauthenticated username profiles use a local client id, so players can use multiplayer without creating an account.
-   - Logging in later calls the profile link endpoint and associates the current profile with the Identity UID.
+   - Browser requests identify the player with a local Pips client/profile id.
+   - The central Wholegrain Accounts service links `identity_id` through the protected `link-wholegrain-account` action.
+   - Pips account dialogs only redirect to Wholegrain Accounts; they do not collect email or password.
 
-5. Password recovery:
-   - The login dialog calls Netlify Identity's recovery endpoint.
-   - Make sure Identity-generated recovery and confirmation emails are enabled and have valid site URLs.
-
-6. Local development:
-   - Use `netlify dev` when you need Identity, Functions, and Database together.
+9. Local development:
+   - Use `netlify dev` when you need Functions and Database together.
    - Use `npm run dev` for frontend-only singleplayer work.
    - Use `npm run dev:multiplayer` in a second terminal for the WebSocket lobby/game server.
 
