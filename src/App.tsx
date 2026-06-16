@@ -63,7 +63,7 @@ type MultiplayerConnectStatus = "idle" | "connecting" | "failed";
 type AccountDialogMode = "signup" | "login" | null;
 type InviteNotice = "in-game" | "full" | "sent" | null;
 
-const appVersion = "0.9.4";
+const appVersion = "0.9.5";
 const multiplayerRetryMs = 5_000;
 const multiplayerUnavailableMs = 120_000;
 const rollBaseDuration = 1.3;
@@ -354,6 +354,7 @@ function AccountDialog({
 }
 
 function FriendsDialog({
+  profile,
   friends,
   recents,
   searchResults,
@@ -364,6 +365,7 @@ function FriendsDialog({
   onRemoveFriend,
   onClose
 }: {
+  profile: PlayerProfile | null;
   friends: PlayerSummary[];
   recents: PlayerSummary[];
   searchResults: PlayerSummary[];
@@ -380,33 +382,40 @@ function FriendsDialog({
     <div className="dialog-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
       <section className="friends-dialog" role="dialog" aria-modal="true" aria-labelledby="friends-title" onMouseDown={(event) => event.stopPropagation()}>
         <div className="customise-heading">
-          <h2 id="friends-title">Profile</h2>
+          <h2 id="friends-title" className="profile-dialog-title">
+            <span>{profile?.username ?? "Profile"}</span>
+            {profile?.hash && <small>#{profile.hash}</small>}
+          </h2>
         </div>
         <div className="customise-tabs tabs-count-3">
           <button className={tab === "friends" ? "active" : ""} onClick={() => setTab("friends")}>Friends</button>
           <button className={tab === "recents" ? "active" : ""} onClick={() => setTab("recents")}>Recents</button>
           <button className={tab === "search" ? "active" : ""} onClick={() => setTab("search")}>Search</button>
         </div>
-        {tab === "search" && (
-          <label className="option-field">
-            <span>Search</span>
-            <input value={searchQuery} onChange={(event) => onSearch(event.currentTarget.value)} placeholder="Name #1234" />
-          </label>
-        )}
-        <div className="friends-list">
-          {rows.length === 0 && <p className="empty-lobbies">{tab === "search" ? "No matching players." : "No players here yet."}</p>}
-          {rows.map((player) => {
-            const isFriend = tab === "friends" || Boolean(player.friend) || friends.some((friend) => friend.id === player.id);
-            return (
-              <article className="friend-card" key={player.id}>
-                {tab === "friends" && <button className="friend-remove" aria-label={`Remove ${player.username}`} onClick={() => onRemoveFriend(player)}>x</button>}
-                <strong>{player.username} <span>#{player.hash}</span></strong>
-                <MenuButton variant="small" onClick={() => (isFriend ? onChallenge(player) : onAddFriend(player))}>
-                  {isFriend ? "Challenge" : "Add Friend"}
-                </MenuButton>
-              </article>
-            );
-          })}
+        <div className={`friends-panel-body ${tab === "search" ? "has-search" : ""}`}>
+          <div className="friends-search-slot">
+            {tab === "search" && (
+              <label className="option-field">
+                <span>Search</span>
+                <input value={searchQuery} onChange={(event) => onSearch(event.currentTarget.value)} placeholder="Name #1234" />
+              </label>
+            )}
+          </div>
+          <div className="friends-list">
+            {rows.length === 0 && <p className="empty-lobbies">{tab === "search" ? "No matching players." : "No players here yet."}</p>}
+            {rows.map((player) => {
+              const isFriend = tab === "friends" || Boolean(player.friend) || friends.some((friend) => friend.id === player.id);
+              return (
+                <article className="friend-card" key={player.id}>
+                  {tab === "friends" && <button className="friend-remove" aria-label={`Remove ${player.username}`} onClick={() => onRemoveFriend(player)}>x</button>}
+                  <strong>{player.username} <span>#{player.hash}</span></strong>
+                  <MenuButton variant="small" onClick={() => (isFriend ? onChallenge(player) : onAddFriend(player))}>
+                    {isFriend ? "Challenge" : "Add Friend"}
+                  </MenuButton>
+                </article>
+              );
+            })}
+          </div>
         </div>
         <div className="dialog-actions">
           <MenuButton variant="small" onClick={onClose}>Close</MenuButton>
@@ -1698,6 +1707,7 @@ export function App() {
       )}
       {friendsOpen && (
         <FriendsDialog
+          profile={profile}
           friends={friends}
           recents={recents}
           searchResults={searchResults}

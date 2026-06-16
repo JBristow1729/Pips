@@ -1282,7 +1282,25 @@ h1 {
 }
 
 .friends-dialog {
-  width: min(760px, 100%);
+  width: min(720px, calc(100vw - 2rem));
+  height: min(560px, calc(100vh - 2rem));
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  overflow: hidden;
+}
+
+.profile-dialog-title {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.profile-dialog-title span {
+  color: var(--color-ink);
+}
+
+.profile-dialog-title small {
+  color: rgba(69, 39, 18, 0.6);
+  font-size: 0.78rem;
+  font-weight: 900;
 }
 
 .options-list {
@@ -1355,8 +1373,27 @@ h1 {
   padding: 0;
 }
 
+.friends-panel-body {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: 4.95rem minmax(0, 1fr);
+  gap: var(--space-2);
+}
+
+.friends-panel-body:not(.has-search) .friends-search-slot {
+  visibility: hidden;
+}
+
+.friends-search-slot {
+  min-width: 0;
+}
+
+.friends-search-slot .option-field {
+  min-width: 0;
+}
+
 .friends-list {
-  min-height: 12rem;
+  min-height: 0;
   display: grid;
   align-content: start;
   gap: var(--space-2);
