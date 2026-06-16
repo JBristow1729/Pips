@@ -156,6 +156,18 @@ export function writeCustomizationInventory(inventory: DiceCustomizationInventor
   localStorage.setItem(CUSTOMIZATION_KEY, JSON.stringify(normalizeInventory(inventory)));
 }
 
+export function unlockAllCustomizations(inventory: DiceCustomizationInventory): DiceCustomizationInventory {
+  return normalizeInventory({
+    equipped: inventory.equipped,
+    owned: {
+      body: diceColors.map((option) => option.id),
+      pipColor: diceColors.map((option) => option.id),
+      pipShape: pipShapes.map((option) => option.id),
+      texture: diceTextures.map((option) => option.id)
+    }
+  });
+}
+
 export function getColorOption(id: DiceColorId): DiceColorOption {
   return diceColors.find((option) => option.id === id) ?? diceColors[0];
 }

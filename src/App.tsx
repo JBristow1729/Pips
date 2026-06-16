@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
 import { Dice } from "./components/Dice";
 import { CustomiseDialog } from "./components/CustomiseDialog";
 import { Dialog } from "./components/Dialog";
@@ -12,7 +12,7 @@ import { BET_GOALS, type GameState, type Mode, type PlayerId } from "./game/type
 import type { Die, DieValue } from "./game/types";
 import { connectMultiplayerLobby, type MultiplayerConnection } from "./multiplayer/client";
 import type { LobbyState, PublicLobby, ServerMessage } from "./multiplayer/types";
-import { createRandomCustomization, readCustomizationInventory, writeCustomizationInventory, type DiceCustomizationInventory } from "./customization/diceCustomization";
+import { createRandomCustomization, readCustomizationInventory, unlockAllCustomizations, writeCustomizationInventory, type DiceCustomizationInventory } from "./customization/diceCustomization";
 import { readOptions, usernameMaxLength, validateUsername, writeOptions, type PlayerOptions } from "./storage/options";
 import { changeWallet, readWallet } from "./storage/wallet";
 import {
@@ -59,7 +59,8 @@ const multiplayerUnavailableMs = 120_000;
 const rollBaseDuration = 1.3;
 const rollStartStagger = 0.1;
 const rollStopStagger = 0.1;
-const debugGoldCode = "HtqrIOOO";
+const cheatClickCount = 10;
+const cheatClickWindowMs = 5_000;
 
 const foundPhrases = [
   "On the tavern floor!",
@@ -75,6 +76,63 @@ function GoldDisplay({ gold }: { gold: number }) {
       <span className="coin" aria-hidden="true" />
       <span className="gold-label">Purse</span>
       <strong>{gold}g</strong>
+    </div>
+  );
+}
+
+function PipsTitle({ compact = false, onDotClick }: { compact?: boolean; onDotClick: () => void }) {
+  const dotRef = useRef<HTMLSpanElement | null>(null);
+  const handlePointerDown = (event: PointerEvent<HTMLHeadingElement>) => {
+    const rect = dotRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const insideDot =
+      event.clientX >= rect.left &&
+      event.clientX <= rect.right &&
+      event.clientY >= rect.top &&
+      event.clientY <= rect.bottom;
+    if (insideDot) onDotClick();
+  };
+
+  return (
+    <h1 className={compact ? "pips-title compact-title" : "pips-title"} onPointerDown={handlePointerDown}>
+      P
+      <span className="pips-title-i">
+        <span ref={dotRef} className="pips-title-dot" aria-hidden="true" />
+        i
+      </span>
+      ps
+    </h1>
+  );
+}
+
+function CheatPanelDialog({ error, notice, onSubmit, onClose }: { error: string; notice: string; onSubmit: (code: string) => void; onClose: () => void }) {
+  const [code, setCode] = useState("");
+  return (
+    <div className="dialog-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+      <form
+        className="account-dialog cheat-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="cheat-title"
+        onMouseDown={(event) => event.stopPropagation()}
+        onSubmit={(event) => {
+          event.preventDefault();
+          onSubmit(code);
+          setCode("");
+        }}
+      >
+        <h2 id="cheat-title">Cheat Panel</h2>
+        <label className="option-field">
+          <span>Code</span>
+          <input value={code} autoFocus autoComplete="off" spellCheck={false} onChange={(event) => setCode(event.currentTarget.value)} />
+        </label>
+        {error && <p className="error">{error}</p>}
+        {notice && <p className="account-notice">{notice}</p>}
+        <div className="dialog-actions">
+          <MenuButton variant="small" onClick={onClose}>Close</MenuButton>
+          <MenuButton variant="small" type="submit" disabled={!code.trim()}>OK</MenuButton>
+        </div>
+      </form>
     </div>
   );
 }
@@ -427,6 +485,9 @@ export function App() {
   const [leaveDialog, setLeaveDialog] = useState(false);
   const [rulesOpen, setRulesOpen] = useState(false);
   const [customiseOpen, setCustomiseOpen] = useState(false);
+  const [cheatPanelOpen, setCheatPanelOpen] = useState(false);
+  const [cheatError, setCheatError] = useState("");
+  const [cheatNotice, setCheatNotice] = useState("");
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [usernameOpen, setUsernameOpen] = useState(false);
   const [usernameError, setUsernameError] = useState("");
@@ -463,6 +524,7 @@ export function App() {
   const [rematchDialog, setRematchDialog] = useState<RematchDialog>(null);
   const [rematchPurseError, setRematchPurseError] = useState(false);
   const connectionRef = useRef<MultiplayerConnection | null>(null);
+  const pipsDotClicksRef = useRef<number[]>([]);
   const multiplayerConnectStatusRef = useRef<MultiplayerConnectStatus>("idle");
   const multiplayerConnectStartedAtRef = useRef(0);
   const multiplayerRetryTimerRef = useRef<number | null>(null);
@@ -920,6 +982,7 @@ export function App() {
   const closeMenuOverlays = () => {
     setRulesOpen(false);
     setCustomiseOpen(false);
+    setCheatPanelOpen(false);
     setOptionsOpen(false);
     setUsernameOpen(false);
     setAccountPromptOpen(false);
@@ -1171,13 +1234,36 @@ export function App() {
   };
 
   const applyOptions = (nextOptions: PlayerOptions) => {
-    if (nextOptions.username === debugGoldCode) {
-      setGold(changeWallet(1000));
-      setOptionsOpen(false);
-      return;
-    }
     writeOptions(nextOptions);
     setOptions(nextOptions);
+  };
+
+  const handlePipsDotClick = useCallback(() => {
+    const now = Date.now();
+    pipsDotClicksRef.current = [...pipsDotClicksRef.current.filter((time) => now - time <= cheatClickWindowMs), now];
+    if (pipsDotClicksRef.current.length < cheatClickCount) return;
+    pipsDotClicksRef.current = [];
+    setCheatError("");
+    setCheatNotice("");
+    setCheatPanelOpen(true);
+  }, []);
+
+  const submitCheatCode = (code: string) => {
+    const normalized = code.trim().toLowerCase();
+    setCheatError("");
+    setCheatNotice("");
+    if (normalized === "rosebud") {
+      setGold(changeWallet(1000));
+      setCheatNotice("Added 1000g.");
+      return;
+    }
+    if (normalized === "monopoly") {
+      const nextInventory = unlockAllCustomizations(customizationInventory);
+      saveCustomizationInventory(nextInventory);
+      setCheatNotice("Shop unlocked.");
+      return;
+    }
+    setCheatError("Unknown code.");
   };
 
   const updateLobbyConfig = (nextBet: number, nextPublic = lobby?.public ?? false) => {
@@ -1218,7 +1304,7 @@ export function App() {
       return (
         <main className="menu-screen menu-home">
           <div className="hero-panel">
-            <h1>Pips</h1>
+            <PipsTitle onDotClick={handlePipsDotClick} />
             <div className="version-number">Version: {appVersion}</div>
           </div>
           <div className="top-bar" aria-label="Player wallet">
@@ -1237,7 +1323,7 @@ export function App() {
       return (
         <main className="menu-screen menu-bet">
           <div className="hero-panel compact">
-            <h1>Pips</h1>
+            <PipsTitle compact onDotClick={handlePipsDotClick} />
           </div>
           <div className="top-bar" aria-label="Player wallet">
             <GoldDisplay gold={gold} />
@@ -1282,7 +1368,7 @@ export function App() {
       return (
         <main className="menu-screen menu-multiplayer">
           <div className="hero-panel">
-            <h1>Pips</h1>
+            <PipsTitle onDotClick={handlePipsDotClick} />
           </div>
           <div className="top-bar" aria-label="Player wallet">
             <GoldDisplay gold={gold} />
@@ -1528,7 +1614,7 @@ export function App() {
     }
 
     return null;
-  }, [screen, gold, bet, goal, canAfford, canAffordRematch, game, controlsEnabled, selectedScoreValid, hasRolledThisTurn, multiplayerError, playerId, isRolling, rollVisual, customizationInventory, options, profile, lobby, publicLobbies, joinCode, turnTimer, timerSecondsLeft]);
+  }, [screen, gold, bet, goal, canAfford, canAffordRematch, game, controlsEnabled, selectedScoreValid, hasRolledThisTurn, multiplayerError, playerId, isRolling, rollVisual, customizationInventory, options, profile, lobby, publicLobbies, joinCode, turnTimer, timerSecondsLeft, handlePipsDotClick]);
 
   function selectMode(nextMode: Mode) {
     if (nextMode === "multiplayer" && !profile) {
@@ -1727,6 +1813,14 @@ export function App() {
           onPurchase={saveCustomizationInventory}
           onSpendGold={spendGold}
           onClose={() => setCustomiseOpen(false)}
+        />
+      )}
+      {cheatPanelOpen && (
+        <CheatPanelDialog
+          error={cheatError}
+          notice={cheatNotice}
+          onSubmit={submitCheatCode}
+          onClose={() => setCheatPanelOpen(false)}
         />
       )}
     </div>

@@ -177,6 +177,27 @@ h1 {
   text-shadow: 0 5px 0 #000, 0 0 30px rgba(242, 204, 98, 0.24);
 }
 
+.pips-title {
+  cursor: default;
+  user-select: none;
+}
+
+.pips-title-i {
+  position: relative;
+  display: inline-block;
+}
+
+.pips-title-dot {
+  position: absolute;
+  left: 50%;
+  top: 0.02em;
+  width: 0.3em;
+  height: 0.22em;
+  transform: translateX(-50%);
+  cursor: default;
+  -webkit-tap-highlight-color: transparent;
+}
+
 .hero-copy,
 .panel-copy {
   width: min(100%, 52ch);
