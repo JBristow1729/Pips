@@ -1,4 +1,4 @@
-const CACHE_NAME = "pips-v0.9.6";
+const CACHE_NAME = "pips-v0.9.7";
 const APP_SHELL = ["/", "/index.html", "/manifest.webmanifest", "/pwa/icon.svg", "/pwa/maskable-icon.svg", "/pwa/apple-touch-icon.svg"];
 
 self.addEventListener("install", (event) => {
@@ -20,6 +20,11 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(request.url);
 
   if (request.method !== "GET" || url.protocol.startsWith("ws")) return;
+
+  if (url.pathname.startsWith("/.netlify/functions/")) {
+    event.respondWith(fetch(request));
+    return;
+  }
 
   if (request.mode === "navigate") {
     event.respondWith(

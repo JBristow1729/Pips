@@ -67,7 +67,7 @@ type AccountDialogMode = "signup" | "login" | null;
 type InviteNotice = "offline" | "in-game" | "full" | "sent" | { type: "rejected"; username: string } | null;
 type ProfileStatus = { online: boolean; inGame: boolean };
 
-const appVersion = "0.9.6";
+const appVersion = "0.9.7";
 const multiplayerRetryMs = 5_000;
 const multiplayerUnavailableMs = 120_000;
 const rollBaseDuration = 1.3;

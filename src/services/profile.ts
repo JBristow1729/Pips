@@ -140,7 +140,7 @@ async function requestProfile<T>(url: string, init: RequestInit = {}): Promise<T
   const cachedProfileId = readCachedProfile()?.id;
   if (cachedProfileId) headers.set("x-pips-profile-id", cachedProfileId);
   if (session?.access_token) headers.set("authorization", `Bearer ${session.access_token}`);
-  const response = await fetch(url, { ...init, headers });
+  const response = await fetch(url, { ...init, headers, cache: "no-store" });
   if (!response.ok) {
     const body = (await response.json().catch(() => null)) as { error?: string } | null;
     throw new Error(body?.error ?? "Profile service is unavailable.");
