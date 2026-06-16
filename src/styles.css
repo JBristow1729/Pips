@@ -389,24 +389,26 @@ h1 {
 
 .friends-toggle {
   position: fixed;
-  left: var(--space-3);
-  top: var(--space-3);
+  left: var(--space-4);
+  top: var(--space-4);
   z-index: var(--z-controls);
-  width: auto;
-  min-width: 3rem;
-  height: 3rem;
-  display: inline-flex;
+  display: inline-grid;
+  grid-template-columns: auto auto;
+  grid-template-areas:
+    "icon label"
+    "icon value";
   align-items: center;
-  justify-content: center;
-  gap: 0.55rem;
-  padding: 0 0.72rem;
-  color: #fff8ea;
+  gap: 0 0.75rem;
+  min-width: 128px;
+  padding: 0.62rem 0.9rem;
+  color: var(--color-cream);
+  text-align: left;
   background:
-    linear-gradient(180deg, rgba(255, 241, 176, 0.18), transparent 36%),
-    linear-gradient(180deg, #7d3e31, #472018 58%, #21100c);
-  border: 1px solid #f0c866;
-  border-radius: var(--radius-small);
-  box-shadow: 0 6px 0 #1a0d07, 0 15px 26px rgba(0, 0, 0, 0.36), inset 0 0 0 1px rgba(255, 255, 255, 0.14);
+    linear-gradient(145deg, rgba(255, 238, 181, 0.1), transparent 42%),
+    linear-gradient(180deg, rgba(68, 39, 22, 0.94), rgba(31, 19, 12, 0.96));
+  border: var(--border-carved);
+  border-radius: var(--radius-panel);
+  box-shadow: var(--shadow-panel);
   cursor: pointer;
   transition: transform var(--duration-fast) ease, filter var(--duration-fast) ease, box-shadow var(--duration-fast) ease;
 }
@@ -417,36 +419,41 @@ h1 {
 }
 
 .friends-icon {
-  width: 1.45rem;
-  height: 1.45rem;
-  flex: 0 0 auto;
+  grid-area: icon;
+  width: 2.35rem;
+  height: 2.35rem;
   display: block;
   fill: currentColor;
   filter: drop-shadow(0 2px 0 #120b07);
 }
 
 .profile-toggle-text {
-  min-width: 0;
-  display: grid;
-  justify-items: start;
-  gap: 0.08rem;
-  line-height: 1;
+  display: contents;
 }
 
-.profile-toggle-text strong {
+.profile-toggle-text span {
+  grid-area: label;
+  justify-self: start;
+  min-width: 0;
   max-width: 8.5rem;
   overflow: hidden;
-  color: #fff8ea;
+  color: var(--color-cream);
   font-size: 0.92rem;
   font-weight: 900;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.profile-toggle-text small {
-  color: rgba(255, 248, 234, 0.68);
-  font-size: 0.7rem;
+.profile-toggle-text strong {
+  grid-area: value;
+  justify-self: start;
+  max-width: 8.5rem;
+  overflow: hidden;
+  color: rgba(255, 248, 234, 0.72);
+  font-size: clamp(1.05rem, 0.95rem + 0.45vw, 1.35rem);
   font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .cog-icon {
@@ -2416,9 +2423,18 @@ h1 {
   .friends-toggle {
     left: 0.85rem;
     top: 0.85rem;
-    height: 2.65rem;
-    min-width: 2.65rem;
-    padding-inline: 0.62rem;
+    min-width: 118px;
+    padding: 0.55rem 0.75rem;
+  }
+
+  .friends-icon {
+    width: 2rem;
+    height: 2rem;
+  }
+
+  .profile-toggle-text span,
+  .profile-toggle-text strong {
+    max-width: 7rem;
   }
 
   .menu-lobby.host-loading-screen {

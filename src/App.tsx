@@ -1676,30 +1676,30 @@ export function App() {
       >
         <span className="cog-icon" aria-hidden="true" />
       </button>
-      <button
-        className="friends-toggle"
-        type="button"
-        aria-label={profile ? `Profile ${profile.username} number ${profile.hash}` : "Profile"}
-        onClick={() => {
-          playTap();
-          if (!profile) {
-            setUsernameOpen(true);
-            return;
-          }
-          setFriendsOpen(true);
-        }}
-      >
-        <svg className="friends-icon" viewBox="0 0 48 48" aria-hidden="true" focusable="false">
-          <circle cx="24" cy="15" r="8" />
-          <path d="M10 40c1.4-9.2 6.4-14 14-14s12.6 4.8 14 14H10Z" />
-        </svg>
-        {profile && (
+      {screen !== "game" && (
+        <button
+          className="friends-toggle"
+          type="button"
+          aria-label={profile ? `Profile ${profile.username} number ${profile.hash}` : "Profile"}
+          onClick={() => {
+            playTap();
+            if (!profile) {
+              setUsernameOpen(true);
+              return;
+            }
+            setFriendsOpen(true);
+          }}
+        >
+          <svg className="friends-icon" viewBox="0 0 48 48" aria-hidden="true" focusable="false">
+            <circle cx="24" cy="15" r="8" />
+            <path d="M10 40c1.4-9.2 6.4-14 14-14s12.6 4.8 14 14H10Z" />
+          </svg>
           <span className="profile-toggle-text">
-            <strong>{profile.username}</strong>
-            <small>#{profile.hash}</small>
+            <span>{profile?.username ?? "Profile"}</span>
+            <strong>{profile ? `#${profile.hash}` : "Set name"}</strong>
           </span>
-        )}
-      </button>
+        </button>
+      )}
       {foundGold && (
         <Dialog title="You found 10g..." onNo={() => setFoundGold(null)} noLabel="OK">
           <p>{foundGold}</p>
