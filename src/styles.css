@@ -1323,6 +1323,17 @@ h1 {
   grid-row: 1 / span 2;
 }
 
+.signed-in-row {
+  width: 100%;
+}
+
+.signed-in-row strong {
+  max-width: 18rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .option-account-actions {
   display: flex;
   flex-wrap: wrap;

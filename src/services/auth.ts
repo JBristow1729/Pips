@@ -63,6 +63,22 @@ export async function confirmIdentityEmail(token: string) {
   return session;
 }
 
+export async function recoverIdentityPassword(token: string) {
+  const user = await auth.recover(token, true);
+  const session = sessionFromUser(user);
+  writeIdentitySession(session);
+  return session;
+}
+
+export async function updateIdentityPassword(password: string) {
+  const user = auth.currentUser();
+  if (!user) throw new Error("Your password reset session has expired. Please request a new reset email.");
+  const updated = await user.update({ password });
+  const session = sessionFromUser(updated);
+  writeIdentitySession(session);
+  return session;
+}
+
 export function readIdentityRedirectToken() {
   const params = new URLSearchParams(window.location.search);
   const hash = window.location.hash.startsWith("#") ? window.location.hash.slice(1) : window.location.hash;
