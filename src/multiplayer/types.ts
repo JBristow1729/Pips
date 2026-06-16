@@ -3,7 +3,9 @@ import type { DiceCustomization } from "../customization/diceCustomization";
 
 export type LobbyPlayer = {
   id: PlayerId;
+  profileId?: string;
   username: string;
+  hash?: string;
   ready: boolean;
   isHost: boolean;
 };
@@ -30,9 +32,12 @@ export type ServerMessage =
   | { type: "waitingCounts"; counts: Record<number, number> }
   | { type: "publicLobbies"; lobbies: PublicLobby[] }
   | { type: "lobby"; lobby: LobbyState; playerId: PlayerId }
-  | { type: "matched"; playerId: PlayerId; state: GameState }
+  | { type: "matched"; playerId: PlayerId; state: GameState; opponentProfileId?: string }
   | { type: "state"; state: GameState }
   | { type: "turnTimer"; playerId: PlayerId; endsAt: number; durationMs: number }
+  | { type: "inviteChallenge"; from: { id?: string; username: string; hash?: string }; lobbyId: string }
+  | { type: "inviteUnavailable"; reason: "offline" | "in-game" | "full" }
+  | { type: "inviteSent" }
   | { type: "rematchWaiting" }
   | { type: "rematchChallenge"; bet: number }
   | { type: "rematchStarted"; state: GameState }
@@ -41,9 +46,13 @@ export type ServerMessage =
   | { type: "error"; message: string };
 
 export type ClientMessage =
+  | { type: "identify"; profile: { id: string; username: string; hash: string } }
   | { type: "join"; bet: number; goal: number; customization?: DiceCustomization }
-  | { type: "createLobby"; username: string; bet: number; goal: number; public: boolean; customization?: DiceCustomization }
-  | { type: "joinLobby"; username: string; code?: string; lobbyId?: string; customization?: DiceCustomization }
+  | { type: "createLobby"; username: string; profileId?: string; hash?: string; bet: number; goal: number; public: boolean; customization?: DiceCustomization }
+  | { type: "joinLobby"; username: string; profileId?: string; hash?: string; code?: string; lobbyId?: string; customization?: DiceCustomization }
+  | { type: "inviteFriend"; targetProfileId: string; lobbyId: string }
+  | { type: "acceptInvite"; lobbyId: string; username: string; profileId?: string; hash?: string; customization?: DiceCustomization }
+  | { type: "declineInvite"; lobbyId: string }
   | { type: "updateLobby"; bet?: number; goal?: number; public?: boolean }
   | { type: "setReady"; ready: boolean }
   | { type: "leaveLobby" }

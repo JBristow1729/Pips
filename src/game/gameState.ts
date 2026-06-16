@@ -31,15 +31,16 @@ export function createGame(
   bet: number,
   goal: number,
   names = ["You", "Computer"],
-  customizations?: Partial<Record<PlayerId, DiceCustomization>>
+  customizations?: Partial<Record<PlayerId, DiceCustomization>>,
+  startingPlayer: PlayerId = "p1"
 ): GameState {
   return {
     mode,
     bet,
     goal,
-    activePlayer: "p1",
+    activePlayer: startingPlayer,
     phase: "ready",
-    message: turnMessage(names[0]),
+    message: turnMessage(names[startingPlayer === "p1" ? 0 : 1]),
     dice: createDice(6, [1, 1, 1, 5, 2, 3]),
     players: {
       p1: { id: "p1", name: names[0], total: 0, held: 0, current: 0, diceCustomization: customizations?.p1 },

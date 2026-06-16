@@ -1,4 +1,4 @@
-const WALLET_KEY = "tavern-dice-wallet";
+const WALLET_KEY = "pips-wallet";
 
 export function readWallet(): number {
   const saved = Number.parseInt(localStorage.getItem(WALLET_KEY) ?? "100", 10);

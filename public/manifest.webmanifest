@@ -1,6 +1,6 @@
 {
-  "name": "Tavern Dice",
-  "short_name": "Tavern Dice",
+  "name": "Pips",
+  "short_name": "Pips",
   "description": "A medieval tavern dice game for solo and multiplayer browser play.",
   "start_url": "/",
   "scope": "/",

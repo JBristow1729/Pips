@@ -53,7 +53,7 @@ export type DiceTextureOption = {
 
 export type CustomizationTab = "body" | "pipColor" | "pipShape" | "texture";
 
-const CUSTOMIZATION_KEY = "tavern-dice-customization";
+const CUSTOMIZATION_KEY = "pips-customization";
 
 export const CUSTOMIZATION_COST = 50;
 export const TEXTURE_CUSTOMIZATION_COST = 75;

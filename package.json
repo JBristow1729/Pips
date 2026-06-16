@@ -1,6 +1,6 @@
 {
-  "name": "tavern-dice",
-  "version": "1.0.0",
+  "name": "pips",
+  "version": "0.9.0",
   "private": true,
   "type": "module",
   "engines": {
@@ -15,7 +15,10 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@netlify/functions": "^5.3.0",
+    "@types/pg": "^8.20.0",
     "@vitejs/plugin-react": "6.0.2",
+    "pg": "^8.21.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "vite": "8.0.16",

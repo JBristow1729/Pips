@@ -4,7 +4,7 @@ export type PlayerOptions = {
   sfx: boolean;
 };
 
-const storageKey = "tavern-dice-options";
+const storageKey = "pips-options";
 export const usernameMaxLength = 12;
 const blockedWords = [
   "arse",
@@ -57,7 +57,7 @@ const blockedPatterns = [
   /w+h+o+r+e+/
 ];
 export const defaultOptions: PlayerOptions = {
-  username: "Player",
+  username: "",
   music: false,
   sfx: true
 };
@@ -90,7 +90,7 @@ function isInappropriateUsername(value: string) {
 }
 
 export function isDefaultUsername(username: string) {
-  return username.trim().toLowerCase() === defaultOptions.username.toLowerCase();
+  return username.trim().toLowerCase() === "player";
 }
 
 export function readOptions(): PlayerOptions {

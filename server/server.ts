@@ -9,6 +9,8 @@ import { validateUsername } from "../src/storage/options";
 type Client = {
   socket: WebSocket;
   id?: PlayerId;
+  profileId?: string;
+  hash?: string;
   roomId?: string;
   bet?: number;
   username?: string;
@@ -36,11 +38,12 @@ const port = Number.parseInt(process.env.PORT ?? "1999", 10);
 const turnDurationMs = 30_000;
 const waiting = new Map<number, Client[]>();
 const rooms = new Map<string, Room>();
+const onlineProfiles = new Map<string, Client>();
 const countWatchers = new Set<Client>();
 const lobbyWatchers = new Set<Client>();
 const httpServer = createServer((_, response) => {
   response.writeHead(200, { "content-type": "text/plain" });
-  response.end("Tavern Dice multiplayer server is running.\n");
+  response.end("Pips multiplayer server is running.\n");
 });
 const wss = new WebSocketServer({ server: httpServer });
 
@@ -54,6 +57,14 @@ wss.on("connection", (socket) => {
       client.watchingCounts = true;
       countWatchers.add(client);
       sendWaitingCounts(client);
+      return;
+    }
+
+    if (message.type === "identify") {
+      client.profileId = message.profile.id;
+      client.username = cleanUsername(message.profile.username);
+      client.hash = message.profile.hash;
+      onlineProfiles.set(message.profile.id, client);
       return;
     }
 
@@ -76,6 +87,9 @@ wss.on("connection", (socket) => {
     if (message.type === "createLobby") {
       client.customization = message.customization;
       client.username = cleanUsername(message.username);
+      client.profileId = message.profileId ?? client.profileId;
+      client.hash = message.hash ?? client.hash;
+      if (client.profileId) onlineProfiles.set(client.profileId, client);
       createLobby(client, message.bet, message.goal, message.public);
       return;
     }
@@ -83,7 +97,25 @@ wss.on("connection", (socket) => {
     if (message.type === "joinLobby") {
       client.customization = message.customization;
       client.username = cleanUsername(message.username);
+      client.profileId = message.profileId ?? client.profileId;
+      client.hash = message.hash ?? client.hash;
+      if (client.profileId) onlineProfiles.set(client.profileId, client);
       joinLobby(client, message);
+      return;
+    }
+
+    if (message.type === "acceptInvite") {
+      const inviteRoom = rooms.get(message.lobbyId);
+      if (!inviteRoom || inviteRoom.state || inviteRoom.clients.length >= 2) {
+        send(client, { type: "inviteUnavailable", reason: "full" });
+        return;
+      }
+      client.customization = message.customization;
+      client.username = cleanUsername(message.username);
+      client.profileId = message.profileId ?? client.profileId;
+      client.hash = message.hash ?? client.hash;
+      if (client.profileId) onlineProfiles.set(client.profileId, client);
+      joinLobby(client, { type: "joinLobby", username: client.username, profileId: client.profileId, hash: client.hash, lobbyId: message.lobbyId, customization: message.customization });
       return;
     }
 
@@ -111,6 +143,11 @@ wss.on("connection", (socket) => {
       return;
     }
 
+    if (message.type === "inviteFriend") {
+      inviteFriend(room, client, message.targetProfileId, message.lobbyId);
+      return;
+    }
+
     if (message.type === "rematchRequest") {
       requestRematch(room, client);
       return;
@@ -134,6 +171,7 @@ wss.on("connection", (socket) => {
   });
 
   socket.on("close", () => {
+    if (client.profileId && onlineProfiles.get(client.profileId) === client) onlineProfiles.delete(client.profileId);
     countWatchers.delete(client);
     lobbyWatchers.delete(client);
     removeFromQueue(client);
@@ -273,10 +311,13 @@ function startLobbyGame(room: Room) {
   room.state = createGame("multiplayer", room.bet, room.goal, [playerName(room, "p1"), playerName(room, "p2")], {
     p1: room.clients.find((client) => client.id === "p1")?.customization ?? defaultCustomization,
     p2: room.clients.find((client) => client.id === "p2")?.customization ?? defaultCustomization
-  });
+  }, randomStartingPlayer());
   broadcastPublicLobbies();
   for (const client of room.clients) {
-    if (client.id) send(client, { type: "matched", playerId: client.id, state: room.state });
+    if (client.id) {
+      const opponent = room.clients.find((candidate) => candidate !== client);
+      send(client, { type: "matched", playerId: client.id, state: room.state, opponentProfileId: opponent?.profileId });
+    }
   }
   armTurnTimer(room);
 }
@@ -364,9 +405,37 @@ function startRematch(room: Room) {
   room.state = createGame("multiplayer", room.state.bet, BET_GOALS[room.state.bet] ?? 1500, [playerName(room, "p1"), playerName(room, "p2")], {
     p1: room.clients.find((client) => client.id === "p1")?.customization ?? defaultCustomization,
     p2: room.clients.find((client) => client.id === "p2")?.customization ?? defaultCustomization
-  });
+  }, randomStartingPlayer());
   broadcast(room, { type: "rematchStarted", state: room.state });
   armTurnTimer(room);
+}
+
+function inviteFriend(room: Room, client: Client, targetProfileId: string, lobbyId: string) {
+  if (room.id !== lobbyId || room.state || room.clients.length >= 2) {
+    send(client, { type: "inviteUnavailable", reason: "full" });
+    return;
+  }
+  const target = onlineProfiles.get(targetProfileId);
+  if (!target) {
+    send(client, { type: "inviteUnavailable", reason: "offline" });
+    return;
+  }
+  const targetRoom = target.roomId ? rooms.get(target.roomId) : undefined;
+  if (targetRoom?.state && targetRoom.state.phase !== "gameOver") {
+    send(client, { type: "inviteUnavailable", reason: "in-game" });
+    return;
+  }
+  if (client.profileId === targetProfileId) return;
+  send(target, {
+    type: "inviteChallenge",
+    from: { id: client.profileId, username: client.username ?? "Player", hash: client.hash },
+    lobbyId: room.id
+  });
+  send(client, { type: "inviteSent" });
+}
+
+function randomStartingPlayer(): PlayerId {
+  return Math.random() < 0.5 ? "p1" : "p2";
 }
 
 function toAction(message: ClientMessage, playerId: PlayerId): ClientAction | null {
@@ -389,7 +458,9 @@ function lobbyState(room: Room): LobbyState {
       .filter((client): client is Client & { id: PlayerId } => Boolean(client.id))
       .map((client) => ({
         id: client.id,
+        profileId: client.profileId,
         username: client.username ?? "Player",
+        hash: client.hash,
         ready: Boolean(room.ready[client.id]),
         isHost: client.id === room.hostId
       }))
@@ -489,5 +560,5 @@ function randomCode() {
 }
 
 httpServer.listen(port, "0.0.0.0", () => {
-  console.log(`Tavern Dice multiplayer server listening on ws://localhost:${port}`);
+  console.log(`Pips multiplayer server listening on ws://localhost:${port}`);
 });

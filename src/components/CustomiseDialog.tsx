@@ -112,8 +112,13 @@ export function CustomiseDialog({ gold, inventory, onApply, onPurchase, onSpendG
   };
 
   return (
-    <div className="dialog-backdrop">
-      <section className="customise-dialog" role="dialog" aria-modal="true" aria-labelledby="customise-title">
+    <div
+      className="dialog-backdrop"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) requestClose();
+      }}
+    >
+      <section className="customise-dialog" role="dialog" aria-modal="true" aria-labelledby="customise-title" onMouseDown={(event) => event.stopPropagation()}>
         <div className="customise-heading">
           <div>
             <div className="panel-kicker">Dice Chest</div>

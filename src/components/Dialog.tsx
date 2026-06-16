@@ -14,8 +14,13 @@ type Props = {
 
 export function Dialog({ title, children, onYes, onNo, yesLabel = "Yes", noLabel = "No", yesDisabled = false, noDisabled = false }: Props) {
   return (
-    <div className="dialog-backdrop">
-      <div className="dialog" role="dialog" aria-modal="true" aria-labelledby="dialog-title">
+    <div
+      className="dialog-backdrop"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onNo?.();
+      }}
+    >
+      <div className="dialog" role="dialog" aria-modal="true" aria-labelledby="dialog-title" onMouseDown={(event) => event.stopPropagation()}>
         <h2 id="dialog-title">{title}</h2>
         <div className="dialog-body">{children}</div>
         <div className="dialog-actions">
