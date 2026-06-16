@@ -480,7 +480,14 @@ function FriendsDialog({
   onClose: () => void;
 }) {
   const [tab, setTab] = useState<"friends" | "recents" | "search" | "requests">("friends");
-  const rows = tab === "friends" ? friends : tab === "recents" ? recents : tab === "requests" ? requests : searchResults;
+  const [friendFilter, setFriendFilter] = useState("");
+  const [recentFilter, setRecentFilter] = useState("");
+  const listFilter = tab === "friends" ? friendFilter : tab === "recents" ? recentFilter : "";
+  const sourceRows = tab === "friends" ? friends : tab === "recents" ? recents : tab === "requests" ? requests : searchResults;
+  const rows = listFilter.trim()
+    ? sourceRows.filter((player) => `${player.username} #${player.hash}`.toLowerCase().includes(listFilter.trim().toLowerCase()))
+    : sourceRows;
+  const hasLocalSearch = tab === "friends" || tab === "recents";
   return (
     <div className="dialog-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
       <section className="friends-dialog" role="dialog" aria-modal="true" aria-labelledby="friends-title" onMouseDown={(event) => event.stopPropagation()}>
@@ -499,15 +506,23 @@ function FriendsDialog({
             {requests.length > 0 && <span className="tab-badge">{requests.length}</span>}
           </button>
         </div>
-        <div className={`friends-panel-body ${tab === "search" ? "has-search" : ""}`}>
-          <div className="friends-search-slot">
-            {tab === "search" && (
+        <div className={`friends-panel-body ${tab === "search" || hasLocalSearch ? "has-search" : "no-search"}`}>
+          {(tab === "search" || hasLocalSearch) && (
+            <div className="friends-search-slot">
               <label className="option-field">
                 <span>Search</span>
-                <input value={searchQuery} onChange={(event) => onSearch(event.currentTarget.value)} placeholder="Name #1234" />
+                <input
+                  value={tab === "friends" ? friendFilter : tab === "recents" ? recentFilter : searchQuery}
+                  onChange={(event) => {
+                    if (tab === "friends") setFriendFilter(event.currentTarget.value);
+                    else if (tab === "recents") setRecentFilter(event.currentTarget.value);
+                    else onSearch(event.currentTarget.value);
+                  }}
+                  placeholder={tab === "search" ? "Name #1234" : "Filter players"}
+                />
               </label>
-            )}
-          </div>
+            </div>
+          )}
           <div className="friends-list">
             {rows.length === 0 && <p className="empty-lobbies">{tab === "search" ? "No matching players." : "No players here yet."}</p>}
             {rows.map((player) => {
@@ -611,6 +626,8 @@ export function App() {
   const [inviteNotice, setInviteNotice] = useState<InviteNotice>(null);
   const [incomingInvite, setIncomingInvite] = useState<{ from: string; lobbyId: string } | null>(null);
   const [opponentLeftDialog, setOpponentLeftDialog] = useState(false);
+  const [friendNotice, setFriendNotice] = useState<string | null>(null);
+  const [removeFriendTarget, setRemoveFriendTarget] = useState<PlayerSummary | null>(null);
   const [longNameWarning, setLongNameWarning] = useState(false);
   const [options, setOptions] = useState<PlayerOptions>(() => readOptions());
   const [customizationInventory, setCustomizationInventory] = useState<DiceCustomizationInventory>(() => readCustomizationInventory());
@@ -904,7 +921,7 @@ export function App() {
   };
 
   const refreshFriends = () => {
-    fetchFriendsAndRecents()
+    return fetchFriendsAndRecents()
       .then((data) => {
         setFriends(data.friends);
         setRecents(data.recents);
@@ -1118,25 +1135,57 @@ export function App() {
   };
 
   const addFriendFromDialog = async (player: PlayerSummary) => {
-    await requestFriend(player.id).catch(() => undefined);
-    refreshFriends();
-    setSearchResults((current) => current.filter((candidate) => candidate.id !== player.id));
+    try {
+      await requestFriend(player.id);
+      setFriendNotice(`Friend request sent to ${player.username}`);
+      setSearchResults((current) => current.filter((candidate) => candidate.id !== player.id));
+      refreshFriends();
+    } catch {
+      setFriendNotice("Could not send that friend request.");
+    }
   };
 
   const removeFriendFromDialog = async (player: PlayerSummary) => {
-    const confirmed = window.confirm(`Remove ${player.username} from your friends?`);
-    if (!confirmed) return;
-    await removeFriend(player.id).catch(() => undefined);
-    refreshFriends();
+    setRemoveFriendTarget(player);
   };
 
   const answerRequestFromDialog = async (player: PlayerSummary, accepted: boolean) => {
-    await answerFriendRequest(player.id, accepted).catch(() => undefined);
+    try {
+      await answerFriendRequest(player.id, accepted);
+      setFriendRequests((current) => current.filter((request) => request.id !== player.id));
+      if (accepted) setFriends((current) => current.some((friend) => friend.id === player.id) ? current : [...current, { ...player, friend: true }]);
+      setFriendNotice(`You ${accepted ? "accepted" : "rejected"} ${player.username}'s friend request!`);
+      refreshFriends();
+    } catch {
+      setFriendNotice("Could not update that friend request.");
+    }
+  };
+
+  const confirmRemoveFriend = async () => {
+    if (!removeFriendTarget) return;
+    const target = removeFriendTarget;
+    setRemoveFriendTarget(null);
+    await removeFriend(target.id).catch(() => undefined);
+    setFriends((current) => current.filter((friend) => friend.id !== target.id));
     refreshFriends();
+  };
+
+  const closeMenuOverlays = () => {
+    setRulesOpen(false);
+    setCustomiseOpen(false);
+    setOptionsOpen(false);
+    setUsernameOpen(false);
+    setAccountPromptOpen(false);
+    setAccountDialogMode(null);
+    setForgotPasswordOpen(false);
+    setResetPasswordOpen(false);
+    setLogoutConfirmOpen(false);
+    setFriendsOpen(false);
   };
 
   const acceptInvite = () => {
     if (!incomingInvite || !profile) return;
+    closeMenuOverlays();
     const connection = openLobbyConnection();
     connection.send({ type: "acceptInvite", lobbyId: incomingInvite.lobbyId, username: profile.username, profileId: profile.id, hash: profile.hash, customization: customizationInventory.equipped });
     setIncomingInvite(null);
@@ -1970,6 +2019,14 @@ export function App() {
           onClose={() => setFriendsOpen(false)}
         />
       )}
+      {removeFriendTarget && (
+        <Dialog
+          title={`Are you sure you want to delete ${removeFriendTarget.username} as a friend?`}
+          onYes={confirmRemoveFriend}
+          onNo={() => setRemoveFriendTarget(null)}
+        />
+      )}
+      {friendNotice && <Dialog title={friendNotice} onNo={() => setFriendNotice(null)} noLabel="OK" />}
       {incomingInvite && <Dialog title={`${incomingInvite.from} challenged you to a game.`} onYes={acceptInvite} onNo={declineInvite} yesLabel="Accept" noLabel="Decline" />}
       {opponentLeftDialog && <Dialog title="The opponent left the game." onNo={() => { setOpponentLeftDialog(false); returnMain(); }} noLabel="OK" />}
       {inviteNotice === "offline" && <Dialog title="That player is offline." onNo={() => setInviteNotice(null)} noLabel="OK" />}

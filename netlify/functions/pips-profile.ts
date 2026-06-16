@@ -270,13 +270,23 @@ async function searchProfiles(profileId: string, query: string) {
 
 async function addFriend(profileId: string, friendId: string) {
   const db = getPool();
-  await db.query(
-    `INSERT INTO pips_friendships (user_id, friend_id)
-     VALUES ($1, $2), ($2, $1)
-     ON CONFLICT DO NOTHING`,
-    [profileId, friendId]
-  );
-  await db.query("DELETE FROM pips_friend_requests WHERE (requester_id = $1 AND recipient_id = $2) OR (requester_id = $2 AND recipient_id = $1)", [profileId, friendId]);
+  const client = await db.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query(
+      `INSERT INTO pips_friendships (user_id, friend_id)
+       VALUES ($1, $2), ($2, $1)
+       ON CONFLICT DO NOTHING`,
+      [profileId, friendId]
+    );
+    await client.query("DELETE FROM pips_friend_requests WHERE (requester_id = $1 AND recipient_id = $2) OR (requester_id = $2 AND recipient_id = $1)", [profileId, friendId]);
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 async function removeFriend(profileId: string, friendId: string) {
@@ -301,8 +311,25 @@ async function requestFriend(profileId: string, friendId: string) {
 
 async function answerFriendRequest(profileId: string, friendId: string, accepted: boolean) {
   const db = getPool();
-  if (accepted) await addFriend(profileId, friendId);
-  await db.query("DELETE FROM pips_friend_requests WHERE requester_id = $1 AND recipient_id = $2", [friendId, profileId]);
+  const client = await db.connect();
+  try {
+    await client.query("BEGIN");
+    if (accepted) {
+      await client.query(
+        `INSERT INTO pips_friendships (user_id, friend_id)
+         VALUES ($1, $2), ($2, $1)
+         ON CONFLICT DO NOTHING`,
+        [profileId, friendId]
+      );
+    }
+    await client.query("DELETE FROM pips_friend_requests WHERE requester_id = $1 AND recipient_id = $2", [friendId, profileId]);
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 async function addRecent(profileId: string, otherId: string) {

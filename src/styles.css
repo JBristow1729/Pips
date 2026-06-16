@@ -343,11 +343,6 @@ h1 {
   text-decoration: none;
 }
 
-.support-link::before,
-.support-link::after {
-  display: none;
-}
-
 .support-icon {
   width: 1.35rem;
   height: 1.35rem;
@@ -1436,12 +1431,15 @@ h1 {
 .friends-panel-body {
   min-height: 0;
   display: grid;
-  grid-template-rows: 4.95rem minmax(0, 1fr);
   gap: var(--space-2);
 }
 
-.friends-panel-body:not(.has-search) .friends-search-slot {
-  visibility: hidden;
+.friends-panel-body.has-search {
+  grid-template-rows: 4.95rem minmax(0, 1fr);
+}
+
+.friends-panel-body.no-search {
+  grid-template-rows: minmax(0, 1fr);
 }
 
 .friends-search-slot {
