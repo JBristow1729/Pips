@@ -59,7 +59,7 @@ const handler: Handler = async (event, context) => {
       const profile = await requireProfile(actorId, user?.sub ?? null);
       const friends = await listFriends(profile.id);
       const recents = await listRecents(profile.id);
-      const requests = await listFriendRequests(profile.id);
+      const requests = await listFriendRequests(profile);
       return json({ friends, recents, requests });
     }
 
@@ -90,7 +90,7 @@ const handler: Handler = async (event, context) => {
       const profile = await requireProfile(actorId, user?.sub ?? null);
       const body = parseBody<{ friendId?: string; accepted?: boolean }>(event);
       if (!body.friendId) return json({ error: "Friend id is required." }, 400);
-      await answerFriendRequest(profile.id, body.friendId, Boolean(body.accepted));
+      await answerFriendRequest(profile, body.friendId, Boolean(body.accepted));
       return json({ ok: true });
     }
 
@@ -231,16 +231,16 @@ async function listRecents(profileId: string) {
   return rows;
 }
 
-async function listFriendRequests(profileId: string) {
+async function listFriendRequests(profile: Profile) {
   const db = getPool();
   const { rows } = await db.query(
     `SELECT p.id, p.username, p.friend_hash AS hash
      FROM pips_friend_requests r
      JOIN pips_profiles p ON p.id = r.requester_id
-     WHERE r.recipient_id = $1
+     WHERE r.recipient_id = ANY($1)
      ORDER BY r.created_at DESC
      LIMIT 50`,
-    [profileId]
+    [profileIds(profile)]
   );
   return rows;
 }
@@ -309,7 +309,7 @@ async function requestFriend(profileId: string, friendId: string) {
   );
 }
 
-async function answerFriendRequest(profileId: string, friendId: string, accepted: boolean) {
+async function answerFriendRequest(profile: Profile, friendId: string, accepted: boolean) {
   const db = getPool();
   const client = await db.connect();
   try {
@@ -319,10 +319,10 @@ async function answerFriendRequest(profileId: string, friendId: string, accepted
         `INSERT INTO pips_friendships (user_id, friend_id)
          VALUES ($1, $2), ($2, $1)
          ON CONFLICT DO NOTHING`,
-        [profileId, friendId]
+        [profile.id, friendId]
       );
     }
-    await client.query("DELETE FROM pips_friend_requests WHERE requester_id = $1 AND recipient_id = $2", [friendId, profileId]);
+    await client.query("DELETE FROM pips_friend_requests WHERE requester_id = $1 AND recipient_id = ANY($2)", [friendId, profileIds(profile)]);
     await client.query("COMMIT");
   } catch (error) {
     await client.query("ROLLBACK");
@@ -330,6 +330,10 @@ async function answerFriendRequest(profileId: string, friendId: string, accepted
   } finally {
     client.release();
   }
+}
+
+function profileIds(profile: Profile) {
+  return [...new Set([profile.id, profile.identityId].filter(Boolean))];
 }
 
 async function addRecent(profileId: string, otherId: string) {

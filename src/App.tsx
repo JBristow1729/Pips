@@ -807,6 +807,17 @@ export function App() {
   }, [profile?.id]);
 
   useEffect(() => {
+    if (!profile) return;
+    const onFocus = () => refreshFriends();
+    window.addEventListener("focus", onFocus);
+    const timer = window.setInterval(refreshFriends, friendsOpen ? 5_000 : 12_000);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      window.clearInterval(timer);
+    };
+  }, [profile?.id, friendsOpen]);
+
+  useEffect(() => {
     if (!profile || !friendsOpen) return;
     const timer = window.setTimeout(() => {
       if (!searchQuery.trim()) {
