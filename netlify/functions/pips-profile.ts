@@ -233,14 +233,15 @@ async function listRecents(profileId: string) {
 
 async function listFriendRequests(profile: Profile) {
   const db = getPool();
+  const ids = profileIds(profile);
   const { rows } = await db.query(
     `SELECT p.id, p.username, p.friend_hash AS hash
      FROM pips_friend_requests r
      JOIN pips_profiles p ON p.id = r.requester_id
-     WHERE r.recipient_id = ANY($1)
+     WHERE r.recipient_id = $1 OR r.recipient_id = $2
      ORDER BY r.created_at DESC
      LIMIT 50`,
-    [profileIds(profile)]
+    [ids[0], ids[1]]
   );
   return rows;
 }
@@ -322,7 +323,8 @@ async function answerFriendRequest(profile: Profile, friendId: string, accepted:
         [profile.id, friendId]
       );
     }
-    await client.query("DELETE FROM pips_friend_requests WHERE requester_id = $1 AND recipient_id = ANY($2)", [friendId, profileIds(profile)]);
+    const ids = profileIds(profile);
+    await client.query("DELETE FROM pips_friend_requests WHERE requester_id = $1 AND (recipient_id = $2 OR recipient_id = $3)", [friendId, ids[0], ids[1]]);
     await client.query("COMMIT");
   } catch (error) {
     await client.query("ROLLBACK");
@@ -333,7 +335,8 @@ async function answerFriendRequest(profile: Profile, friendId: string, accepted:
 }
 
 function profileIds(profile: Profile) {
-  return [...new Set([profile.id, profile.identityId].filter(Boolean))];
+  const ids = [...new Set([profile.id, profile.identityId].filter(Boolean))] as string[];
+  return ids.length === 1 ? [ids[0], ids[0]] : ids;
 }
 
 async function addRecent(profileId: string, otherId: string) {

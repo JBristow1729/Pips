@@ -455,6 +455,7 @@ function FriendsDialog({
   requests,
   searchResults,
   searchQuery,
+  error,
   statuses,
   onSearch,
   onChallenge,
@@ -470,6 +471,7 @@ function FriendsDialog({
   requests: PlayerSummary[];
   searchResults: PlayerSummary[];
   searchQuery: string;
+  error: string;
   statuses: Record<string, ProfileStatus>;
   onSearch: (query: string) => void;
   onChallenge: (player: PlayerSummary) => void;
@@ -524,6 +526,7 @@ function FriendsDialog({
             </div>
           )}
           <div className="friends-list">
+            {error && <p className="error">{error}</p>}
             {rows.length === 0 && <p className="empty-lobbies">{tab === "search" ? "No matching players." : "No players here yet."}</p>}
             {rows.map((player) => {
               const isFriend = tab === "friends" || Boolean(player.friend) || friends.some((friend) => friend.id === player.id);
@@ -628,6 +631,7 @@ export function App() {
   const [opponentLeftDialog, setOpponentLeftDialog] = useState(false);
   const [friendNotice, setFriendNotice] = useState<string | null>(null);
   const [removeFriendTarget, setRemoveFriendTarget] = useState<PlayerSummary | null>(null);
+  const [friendsError, setFriendsError] = useState("");
   const [longNameWarning, setLongNameWarning] = useState(false);
   const [options, setOptions] = useState<PlayerOptions>(() => readOptions());
   const [customizationInventory, setCustomizationInventory] = useState<DiceCustomizationInventory>(() => readCustomizationInventory());
@@ -934,11 +938,14 @@ export function App() {
   const refreshFriends = () => {
     return fetchFriendsAndRecents()
       .then((data) => {
+        setFriendsError("");
         setFriends(data.friends);
         setRecents(data.recents);
         setFriendRequests(data.requests ?? []);
       })
-      .catch(() => undefined);
+      .catch((error) => {
+        setFriendsError(error instanceof Error ? error.message : "Could not load profile lists.");
+      });
   };
 
   const saveUsername = async (username: string) => {
@@ -2020,6 +2027,7 @@ export function App() {
           requests={friendRequests}
           searchResults={searchResults}
           searchQuery={searchQuery}
+          error={friendsError}
           statuses={profileStatuses}
           onSearch={setSearchQuery}
           onChallenge={challengeFriend}
