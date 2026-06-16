@@ -84,7 +84,7 @@ export async function linkRemoteAccount(localId: string) {
 }
 
 export async function fetchFriendsAndRecents() {
-  return requestProfile<{ friends: PlayerSummary[]; recents: PlayerSummary[] }>("/.netlify/functions/pips-profile?action=friends");
+  return requestProfile<{ friends: PlayerSummary[]; recents: PlayerSummary[]; requests: PlayerSummary[] }>("/.netlify/functions/pips-profile?action=friends");
 }
 
 export async function searchPlayers(query: string) {
@@ -96,6 +96,20 @@ export async function addFriend(friendId: string) {
   await requestProfile("/.netlify/functions/pips-profile?action=friend", {
     method: "POST",
     body: JSON.stringify({ friendId })
+  });
+}
+
+export async function requestFriend(friendId: string) {
+  await requestProfile("/.netlify/functions/pips-profile?action=friend-request", {
+    method: "POST",
+    body: JSON.stringify({ friendId })
+  });
+}
+
+export async function answerFriendRequest(friendId: string, accepted: boolean) {
+  await requestProfile("/.netlify/functions/pips-profile?action=friend-request", {
+    method: "PATCH",
+    body: JSON.stringify({ friendId, accepted })
   });
 }
 

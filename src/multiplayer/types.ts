@@ -38,6 +38,9 @@ export type ServerMessage =
   | { type: "inviteChallenge"; from: { id?: string; username: string; hash?: string }; lobbyId: string }
   | { type: "inviteUnavailable"; reason: "offline" | "in-game" | "full" }
   | { type: "inviteSent" }
+  | { type: "inviteDeclined"; from: { username: string } }
+  | { type: "opponentLeft" }
+  | { type: "profileStatuses"; statuses: Record<string, { online: boolean; inGame: boolean }> }
   | { type: "rematchWaiting" }
   | { type: "rematchChallenge"; bet: number }
   | { type: "rematchStarted"; state: GameState }
@@ -53,6 +56,7 @@ export type ClientMessage =
   | { type: "inviteFriend"; targetProfileId: string; lobbyId: string }
   | { type: "acceptInvite"; lobbyId: string; username: string; profileId?: string; hash?: string; customization?: DiceCustomization }
   | { type: "declineInvite"; lobbyId: string }
+  | { type: "watchProfiles"; profileIds: string[] }
   | { type: "updateLobby"; bet?: number; goal?: number; public?: boolean }
   | { type: "setReady"; ready: boolean }
   | { type: "leaveLobby" }

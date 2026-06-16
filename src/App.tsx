@@ -29,7 +29,7 @@ import {
   type IdentitySession
 } from "./services/auth";
 import {
-  addFriend,
+  answerFriendRequest,
   addRecentPlayer,
   fetchFriendsAndRecents,
   fetchProfile,
@@ -37,6 +37,7 @@ import {
   linkRemoteAccount,
   readCachedProfile,
   removeFriend,
+  requestFriend,
   searchPlayers,
   setRemoteUsername,
   syncRemoteProfile,
@@ -63,7 +64,8 @@ type RematchDialog = "waiting" | "challenge" | "cancelled" | null;
 type TurnTimer = { playerId: PlayerId; endsAt: number; durationMs: number };
 type MultiplayerConnectStatus = "idle" | "connecting" | "failed";
 type AccountDialogMode = "signup" | "login" | null;
-type InviteNotice = "in-game" | "full" | "sent" | null;
+type InviteNotice = "offline" | "in-game" | "full" | "sent" | { type: "rejected"; username: string } | null;
+type ProfileStatus = { online: boolean; inGame: boolean };
 
 const appVersion = "0.9.6";
 const multiplayerRetryMs = 5_000;
@@ -450,27 +452,35 @@ function FriendsDialog({
   profile,
   friends,
   recents,
+  requests,
   searchResults,
   searchQuery,
+  statuses,
   onSearch,
   onChallenge,
   onAddFriend,
   onRemoveFriend,
+  onAcceptRequest,
+  onRejectRequest,
   onClose
 }: {
   profile: PlayerProfile | null;
   friends: PlayerSummary[];
   recents: PlayerSummary[];
+  requests: PlayerSummary[];
   searchResults: PlayerSummary[];
   searchQuery: string;
+  statuses: Record<string, ProfileStatus>;
   onSearch: (query: string) => void;
   onChallenge: (player: PlayerSummary) => void;
   onAddFriend: (player: PlayerSummary) => void;
   onRemoveFriend: (player: PlayerSummary) => void;
+  onAcceptRequest: (player: PlayerSummary) => void;
+  onRejectRequest: (player: PlayerSummary) => void;
   onClose: () => void;
 }) {
-  const [tab, setTab] = useState<"friends" | "recents" | "search">("friends");
-  const rows = tab === "friends" ? friends : tab === "recents" ? recents : searchResults;
+  const [tab, setTab] = useState<"friends" | "recents" | "search" | "requests">("friends");
+  const rows = tab === "friends" ? friends : tab === "recents" ? recents : tab === "requests" ? requests : searchResults;
   return (
     <div className="dialog-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
       <section className="friends-dialog" role="dialog" aria-modal="true" aria-labelledby="friends-title" onMouseDown={(event) => event.stopPropagation()}>
@@ -480,10 +490,14 @@ function FriendsDialog({
             {profile?.hash && <small>#{profile.hash}</small>}
           </h2>
         </div>
-        <div className="customise-tabs tabs-count-3">
+        <div className="customise-tabs tabs-count-4">
           <button className={tab === "friends" ? "active" : ""} onClick={() => setTab("friends")}>Friends</button>
           <button className={tab === "recents" ? "active" : ""} onClick={() => setTab("recents")}>Recents</button>
           <button className={tab === "search" ? "active" : ""} onClick={() => setTab("search")}>Search</button>
+          <button className={tab === "requests" ? "active" : ""} onClick={() => setTab("requests")}>
+            Requests
+            {requests.length > 0 && <span className="tab-badge">{requests.length}</span>}
+          </button>
         </div>
         <div className={`friends-panel-body ${tab === "search" ? "has-search" : ""}`}>
           <div className="friends-search-slot">
@@ -498,13 +512,25 @@ function FriendsDialog({
             {rows.length === 0 && <p className="empty-lobbies">{tab === "search" ? "No matching players." : "No players here yet."}</p>}
             {rows.map((player) => {
               const isFriend = tab === "friends" || Boolean(player.friend) || friends.some((friend) => friend.id === player.id);
+              const status = statuses[player.id];
+              const online = Boolean(status?.online);
               return (
                 <article className="friend-card" key={player.id}>
                   {tab === "friends" && <button className="friend-remove" aria-label={`Remove ${player.username}`} onClick={() => onRemoveFriend(player)}>x</button>}
-                  <strong>{player.username} <span>#{player.hash}</span></strong>
-                  <MenuButton variant="small" onClick={() => (isFriend ? onChallenge(player) : onAddFriend(player))}>
-                    {isFriend ? "Challenge" : "Add Friend"}
-                  </MenuButton>
+                  <div className="friend-card-copy">
+                    <strong>{player.username} <span>#{player.hash}</span></strong>
+                    {isFriend && <small className={online ? "friend-online" : ""}>{online ? "Online" : "Offline"}</small>}
+                  </div>
+                  {tab === "requests" ? (
+                    <div className="friend-request-actions">
+                      <button aria-label={`Accept ${player.username}`} onClick={() => onAcceptRequest(player)}>✓</button>
+                      <button aria-label={`Reject ${player.username}`} onClick={() => onRejectRequest(player)}>×</button>
+                    </div>
+                  ) : (
+                    <MenuButton variant="small" onClick={() => (isFriend ? onChallenge(player) : onAddFriend(player))} disabled={isFriend && !online}>
+                      {isFriend ? "Challenge" : "Add Friend"}
+                    </MenuButton>
+                  )}
                 </article>
               );
             })}
@@ -578,10 +604,13 @@ export function App() {
   const [friendsOpen, setFriendsOpen] = useState(false);
   const [friends, setFriends] = useState<PlayerSummary[]>([]);
   const [recents, setRecents] = useState<PlayerSummary[]>([]);
+  const [friendRequests, setFriendRequests] = useState<PlayerSummary[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<PlayerSummary[]>([]);
+  const [profileStatuses, setProfileStatuses] = useState<Record<string, ProfileStatus>>({});
   const [inviteNotice, setInviteNotice] = useState<InviteNotice>(null);
   const [incomingInvite, setIncomingInvite] = useState<{ from: string; lobbyId: string } | null>(null);
+  const [opponentLeftDialog, setOpponentLeftDialog] = useState(false);
   const [longNameWarning, setLongNameWarning] = useState(false);
   const [options, setOptions] = useState<PlayerOptions>(() => readOptions());
   const [customizationInventory, setCustomizationInventory] = useState<DiceCustomizationInventory>(() => readCustomizationInventory());
@@ -756,6 +785,11 @@ export function App() {
   }, [profile?.id, friendsOpen]);
 
   useEffect(() => {
+    if (!profile) return;
+    refreshFriends();
+  }, [profile?.id]);
+
+  useEffect(() => {
     if (!profile || !friendsOpen) return;
     const timer = window.setTimeout(() => {
       if (!searchQuery.trim()) {
@@ -768,6 +802,14 @@ export function App() {
     }, 180);
     return () => window.clearTimeout(timer);
   }, [profile?.id, friendsOpen, searchQuery]);
+
+  useEffect(() => {
+    if (!profile || !friendsOpen) return;
+    const ids = [...new Set([...friends, ...recents, ...searchResults, ...friendRequests].map((player) => player.id))];
+    if (ids.length === 0) return;
+    const connection = connectionRef.current ?? openProfileConnection();
+    connection.send({ type: "watchProfiles", profileIds: ids });
+  }, [profile?.id, friendsOpen, friends, recents, searchResults, friendRequests]);
 
   useEffect(() => {
     if (screen !== "join") return;
@@ -866,6 +908,7 @@ export function App() {
       .then((data) => {
         setFriends(data.friends);
         setRecents(data.recents);
+        setFriendRequests(data.requests ?? []);
       })
       .catch(() => undefined);
   };
@@ -961,6 +1004,15 @@ export function App() {
     return connectionRef.current;
   };
 
+  const openProfileConnection = () => {
+    setMultiplayerError("");
+    connectionRef.current = connectMultiplayerLobby(handleMultiplayerMessage, setMultiplayerError);
+    if (profile) {
+      connectionRef.current.send({ type: "identify", profile: { id: profile.id, username: profile.username, hash: profile.hash } });
+    }
+    return connectionRef.current;
+  };
+
   const clearMultiplayerRetryTimer = () => {
     if (multiplayerRetryTimerRef.current !== null) {
       window.clearInterval(multiplayerRetryTimerRef.current);
@@ -1048,6 +1100,15 @@ export function App() {
       setUsernameOpen(true);
       return;
     }
+    const status = profileStatuses[player.id];
+    if (!status?.online) {
+      setInviteNotice("offline");
+      return;
+    }
+    if (status.inGame) {
+      setInviteNotice("in-game");
+      return;
+    }
     pendingInviteRef.current = player;
     setFriendsOpen(false);
     const connection = openLobbyConnection();
@@ -1057,9 +1118,9 @@ export function App() {
   };
 
   const addFriendFromDialog = async (player: PlayerSummary) => {
-    await addFriend(player.id).catch(() => undefined);
+    await requestFriend(player.id).catch(() => undefined);
     refreshFriends();
-    setSearchResults((current) => current.map((candidate) => candidate.id === player.id ? { ...candidate, friend: true } : candidate));
+    setSearchResults((current) => current.filter((candidate) => candidate.id !== player.id));
   };
 
   const removeFriendFromDialog = async (player: PlayerSummary) => {
@@ -1069,10 +1130,20 @@ export function App() {
     refreshFriends();
   };
 
+  const answerRequestFromDialog = async (player: PlayerSummary, accepted: boolean) => {
+    await answerFriendRequest(player.id, accepted).catch(() => undefined);
+    refreshFriends();
+  };
+
   const acceptInvite = () => {
     if (!incomingInvite || !profile) return;
     const connection = openLobbyConnection();
     connection.send({ type: "acceptInvite", lobbyId: incomingInvite.lobbyId, username: profile.username, profileId: profile.id, hash: profile.hash, customization: customizationInventory.equipped });
+    setIncomingInvite(null);
+  };
+
+  const declineInvite = () => {
+    if (incomingInvite) connectionRef.current?.send({ type: "declineInvite", lobbyId: incomingInvite.lobbyId });
     setIncomingInvite(null);
   };
 
@@ -1141,9 +1212,17 @@ export function App() {
       setIncomingInvite({ from: message.from.username, lobbyId: message.lobbyId });
     }
     if (message.type === "inviteUnavailable") {
-      setInviteNotice(message.reason === "in-game" ? "in-game" : "full");
+      setInviteNotice(message.reason);
     }
     if (message.type === "inviteSent") setInviteNotice("sent");
+    if (message.type === "inviteDeclined") setInviteNotice({ type: "rejected", username: message.from.username });
+    if (message.type === "profileStatuses") {
+      setProfileStatuses((current) => ({ ...current, ...message.statuses }));
+    }
+    if (message.type === "opponentLeft") {
+      setOpponentLeftDialog(true);
+      setTurnTimer(null);
+    }
   };
 
   const sendAction = (type: "roll" | "hold" | "bank" | "forfeit", dieId?: string) => {
@@ -1586,7 +1665,7 @@ export function App() {
               <MenuButton variant="small" className="rules-button" onClick={() => setRulesOpen(true)}>
                 Rules
               </MenuButton>
-              <MenuButton variant="small" className="back-button" onClick={() => setLeaveDialog(true)}>
+              <MenuButton variant="small" className="back-button" onClick={() => game.phase === "gameOver" ? returnMain() : setLeaveDialog(true)}>
                 Leave
               </MenuButton>
             </div>
@@ -1711,6 +1790,7 @@ export function App() {
             <span>{profile?.username ?? "Profile"}</span>
             <strong>{profile ? `#${profile.hash}` : "Set name"}</strong>
           </span>
+          {friendRequests.length > 0 && <span className="profile-badge">{friendRequests.length}</span>}
         </button>
       )}
       {foundGold && (
@@ -1877,19 +1957,26 @@ export function App() {
           profile={profile}
           friends={friends}
           recents={recents}
+          requests={friendRequests}
           searchResults={searchResults}
           searchQuery={searchQuery}
+          statuses={profileStatuses}
           onSearch={setSearchQuery}
           onChallenge={challengeFriend}
           onAddFriend={addFriendFromDialog}
           onRemoveFriend={removeFriendFromDialog}
+          onAcceptRequest={(player) => answerRequestFromDialog(player, true)}
+          onRejectRequest={(player) => answerRequestFromDialog(player, false)}
           onClose={() => setFriendsOpen(false)}
         />
       )}
-      {incomingInvite && <Dialog title={`${incomingInvite.from} invited you to a game.`} onYes={acceptInvite} onNo={() => setIncomingInvite(null)} yesLabel="Accept" noLabel="Decline" />}
-      {inviteNotice === "in-game" && <Dialog title="That player is currently in a game." onNo={() => setInviteNotice(null)} noLabel="OK" />}
+      {incomingInvite && <Dialog title={`${incomingInvite.from} challenged you to a game.`} onYes={acceptInvite} onNo={declineInvite} yesLabel="Accept" noLabel="Decline" />}
+      {opponentLeftDialog && <Dialog title="The opponent left the game." onNo={() => { setOpponentLeftDialog(false); returnMain(); }} noLabel="OK" />}
+      {inviteNotice === "offline" && <Dialog title="That player is offline." onNo={() => setInviteNotice(null)} noLabel="OK" />}
+      {inviteNotice === "in-game" && <Dialog title="This user is already in a game!" onNo={() => setInviteNotice(null)} noLabel="OK" />}
       {inviteNotice === "full" && <Dialog title="That lobby is now full." onNo={() => setInviteNotice(null)} noLabel="OK" />}
       {inviteNotice === "sent" && <Dialog title="Invitation sent." onNo={() => setInviteNotice(null)} noLabel="OK" />}
+      {inviteNotice && typeof inviteNotice === "object" && <Dialog title={`${inviteNotice.username} rejected your challenge!`} onNo={() => setInviteNotice(null)} noLabel="OK" />}
       {privateJoinFailed && (
         <Dialog
           title="No private game exists for that code."

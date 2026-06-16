@@ -17,6 +17,7 @@ type Client = {
   customization?: DiceCustomization;
   watchingCounts?: boolean;
   watchingLobbies?: boolean;
+  watchedProfileIds?: string[];
 };
 
 type Room = {
@@ -41,6 +42,7 @@ const rooms = new Map<string, Room>();
 const onlineProfiles = new Map<string, Client>();
 const countWatchers = new Set<Client>();
 const lobbyWatchers = new Set<Client>();
+const profileWatchers = new Set<Client>();
 const httpServer = createServer((_, response) => {
   response.writeHead(200, { "content-type": "text/plain" });
   response.end("Pips multiplayer server is running.\n");
@@ -65,6 +67,14 @@ wss.on("connection", (socket) => {
       client.username = cleanUsername(message.profile.username);
       client.hash = message.profile.hash;
       onlineProfiles.set(message.profile.id, client);
+      broadcastProfileStatuses();
+      return;
+    }
+
+    if (message.type === "watchProfiles") {
+      client.watchedProfileIds = message.profileIds;
+      profileWatchers.add(client);
+      sendProfileStatuses(client);
       return;
     }
 
@@ -90,6 +100,7 @@ wss.on("connection", (socket) => {
       client.profileId = message.profileId ?? client.profileId;
       client.hash = message.hash ?? client.hash;
       if (client.profileId) onlineProfiles.set(client.profileId, client);
+      broadcastProfileStatuses();
       createLobby(client, message.bet, message.goal, message.public);
       return;
     }
@@ -100,6 +111,7 @@ wss.on("connection", (socket) => {
       client.profileId = message.profileId ?? client.profileId;
       client.hash = message.hash ?? client.hash;
       if (client.profileId) onlineProfiles.set(client.profileId, client);
+      broadcastProfileStatuses();
       joinLobby(client, message);
       return;
     }
@@ -115,7 +127,13 @@ wss.on("connection", (socket) => {
       client.profileId = message.profileId ?? client.profileId;
       client.hash = message.hash ?? client.hash;
       if (client.profileId) onlineProfiles.set(client.profileId, client);
+      broadcastProfileStatuses();
       joinLobby(client, { type: "joinLobby", username: client.username, profileId: client.profileId, hash: client.hash, lobbyId: message.lobbyId, customization: message.customization });
+      return;
+    }
+
+    if (message.type === "declineInvite") {
+      declineInvite(client, message.lobbyId);
       return;
     }
 
@@ -166,6 +184,7 @@ wss.on("connection", (socket) => {
     const action = toAction(message, client.id);
     if (!action || !room.state) return;
     room.state = reduceGame(room.state, action);
+    if (action.type === "forfeit") notifyOpponentLeft(room, client);
     broadcast(room, { type: "state", state: room.state });
     afterGameAction(room, action);
   });
@@ -174,6 +193,8 @@ wss.on("connection", (socket) => {
     if (client.profileId && onlineProfiles.get(client.profileId) === client) onlineProfiles.delete(client.profileId);
     countWatchers.delete(client);
     lobbyWatchers.delete(client);
+    profileWatchers.delete(client);
+    broadcastProfileStatuses();
     removeFromQueue(client);
     const room = client.roomId ? rooms.get(client.roomId) : undefined;
     if (!room || !client.id) return;
@@ -184,6 +205,7 @@ wss.on("connection", (socket) => {
     if (room.state.phase !== "gameOver") {
       clearTurnTimer(room);
       room.state = reduceGame(room.state, { type: "forfeit", playerId: client.id });
+      notifyOpponentLeft(room, client);
       broadcast(room, { type: "state", state: room.state });
     }
   });
@@ -260,6 +282,7 @@ function joinLobby(client: Client, message: Extract<ClientMessage, { type: "join
   room.clients.push(client);
   room.ready[client.id] = false;
   broadcastLobby(room);
+  broadcastProfileStatuses();
   broadcastPublicLobbies();
 }
 
@@ -293,6 +316,7 @@ function leaveLobby(room: Room, client: Client, silent: boolean) {
   room.ready = Object.fromEntries(room.clients.map((candidate) => [candidate.id, false])) as Partial<Record<PlayerId, boolean>>;
   if (!silent) send(client, { type: "error", message: "You left the lobby." });
   broadcastLobby(room);
+  broadcastProfileStatuses();
   broadcastPublicLobbies();
 }
 
@@ -320,6 +344,7 @@ function startLobbyGame(room: Room) {
     }
   }
   armTurnTimer(room);
+  broadcastProfileStatuses();
 }
 
 function afterGameAction(room: Room, action: ClientAction) {
@@ -432,6 +457,33 @@ function inviteFriend(room: Room, client: Client, targetProfileId: string, lobby
     lobbyId: room.id
   });
   send(client, { type: "inviteSent" });
+}
+
+function declineInvite(client: Client, lobbyId: string) {
+  const room = rooms.get(lobbyId);
+  const host = room?.clients.find((candidate) => candidate.id === room.hostId);
+  if (!host) return;
+  send(host, { type: "inviteDeclined", from: { username: client.username ?? "Player" } });
+}
+
+function notifyOpponentLeft(room: Room, departing: Client) {
+  for (const client of room.clients) {
+    if (client !== departing) send(client, { type: "opponentLeft" });
+  }
+}
+
+function sendProfileStatuses(client: Client) {
+  const ids = client.watchedProfileIds ?? [];
+  const statuses = Object.fromEntries(ids.map((id) => {
+    const target = onlineProfiles.get(id);
+    const targetRoom = target?.roomId ? rooms.get(target.roomId) : undefined;
+    return [id, { online: Boolean(target), inGame: Boolean(targetRoom?.state && targetRoom.state.phase !== "gameOver") }];
+  }));
+  send(client, { type: "profileStatuses", statuses });
+}
+
+function broadcastProfileStatuses() {
+  for (const client of profileWatchers) sendProfileStatuses(client);
 }
 
 function randomStartingPlayer(): PlayerId {

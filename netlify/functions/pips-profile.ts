@@ -59,7 +59,8 @@ const handler: Handler = async (event, context) => {
       const profile = await requireProfile(actorId, user?.sub ?? null);
       const friends = await listFriends(profile.id);
       const recents = await listRecents(profile.id);
-      return json({ friends, recents });
+      const requests = await listFriendRequests(profile.id);
+      return json({ friends, recents, requests });
     }
 
     if (event.httpMethod === "GET" && action === "search") {
@@ -74,6 +75,22 @@ const handler: Handler = async (event, context) => {
       const body = parseBody<{ friendId?: string }>(event);
       if (!body.friendId) return json({ error: "Friend id is required." }, 400);
       await addFriend(profile.id, body.friendId);
+      return json({ ok: true });
+    }
+
+    if (event.httpMethod === "POST" && action === "friend-request") {
+      const profile = await requireProfile(actorId, user?.sub ?? null);
+      const body = parseBody<{ friendId?: string }>(event);
+      if (!body.friendId) return json({ error: "Friend id is required." }, 400);
+      await requestFriend(profile.id, body.friendId);
+      return json({ ok: true });
+    }
+
+    if (event.httpMethod === "PATCH" && action === "friend-request") {
+      const profile = await requireProfile(actorId, user?.sub ?? null);
+      const body = parseBody<{ friendId?: string; accepted?: boolean }>(event);
+      if (!body.friendId) return json({ error: "Friend id is required." }, 400);
+      await answerFriendRequest(profile.id, body.friendId, Boolean(body.accepted));
       return json({ ok: true });
     }
 
@@ -214,6 +231,20 @@ async function listRecents(profileId: string) {
   return rows;
 }
 
+async function listFriendRequests(profileId: string) {
+  const db = getPool();
+  const { rows } = await db.query(
+    `SELECT p.id, p.username, p.friend_hash AS hash
+     FROM pips_friend_requests r
+     JOIN pips_profiles p ON p.id = r.requester_id
+     WHERE r.recipient_id = $1
+     ORDER BY r.created_at DESC
+     LIMIT 50`,
+    [profileId]
+  );
+  return rows;
+}
+
 async function searchProfiles(profileId: string, query: string) {
   const db = getPool();
   const parsed = parseSearch(query);
@@ -239,12 +270,39 @@ async function searchProfiles(profileId: string, query: string) {
 
 async function addFriend(profileId: string, friendId: string) {
   const db = getPool();
-  await db.query("INSERT INTO pips_friendships (user_id, friend_id) VALUES ($1, $2) ON CONFLICT DO NOTHING", [profileId, friendId]);
+  await db.query(
+    `INSERT INTO pips_friendships (user_id, friend_id)
+     VALUES ($1, $2), ($2, $1)
+     ON CONFLICT DO NOTHING`,
+    [profileId, friendId]
+  );
+  await db.query("DELETE FROM pips_friend_requests WHERE (requester_id = $1 AND recipient_id = $2) OR (requester_id = $2 AND recipient_id = $1)", [profileId, friendId]);
 }
 
 async function removeFriend(profileId: string, friendId: string) {
   const db = getPool();
-  await db.query("DELETE FROM pips_friendships WHERE user_id = $1 AND friend_id = $2", [profileId, friendId]);
+  await db.query("DELETE FROM pips_friendships WHERE (user_id = $1 AND friend_id = $2) OR (user_id = $2 AND friend_id = $1)", [profileId, friendId]);
+}
+
+async function requestFriend(profileId: string, friendId: string) {
+  const db = getPool();
+  const { rows } = await db.query("SELECT 1 FROM pips_friendships WHERE user_id = $1 AND friend_id = $2", [profileId, friendId]);
+  if (rows[0]) return;
+  const reverse = await db.query("SELECT 1 FROM pips_friend_requests WHERE requester_id = $1 AND recipient_id = $2", [friendId, profileId]);
+  if (reverse.rows[0]) {
+    await addFriend(profileId, friendId);
+    return;
+  }
+  await db.query(
+    "INSERT INTO pips_friend_requests (requester_id, recipient_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+    [profileId, friendId]
+  );
+}
+
+async function answerFriendRequest(profileId: string, friendId: string, accepted: boolean) {
+  const db = getPool();
+  if (accepted) await addFriend(profileId, friendId);
+  await db.query("DELETE FROM pips_friend_requests WHERE requester_id = $1 AND recipient_id = $2", [friendId, profileId]);
 }
 
 async function addRecent(profileId: string, otherId: string) {
