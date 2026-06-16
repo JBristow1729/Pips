@@ -197,15 +197,6 @@ function OptionsDialog({
           </div>
         </div>
         <div className="options-list">
-          <div className="option-field option-profile">
-            <span>Username</span>
-            <strong>{profile ? `${profile.username} #${profile.hash}` : "Not set"}</strong>
-            <MenuButton variant="small" onClick={onSetUsername}>{profile ? "Change Username" : "Set Username"}</MenuButton>
-          </div>
-          <label className="option-check disabled">
-            <input type="checkbox" checked={false} disabled readOnly />
-            <span>Music</span>
-          </label>
           <label className="option-check">
             <input
               type="checkbox"
@@ -214,6 +205,15 @@ function OptionsDialog({
             />
             <span>SFX</span>
           </label>
+          <label className="option-check disabled">
+            <input type="checkbox" checked={false} disabled readOnly />
+            <span>Music</span>
+          </label>
+          <div className="option-field option-profile">
+            <span>Username</span>
+            <strong>{profile ? `${profile.username} #${profile.hash}` : "Not set"}</strong>
+            <MenuButton variant="small" onClick={onSetUsername}>{profile ? "Change Username" : "Set Username"}</MenuButton>
+          </div>
           <div className="option-account-actions">
             {session ? (
               <div className="option-field option-profile signed-in-row">
@@ -227,6 +227,19 @@ function OptionsDialog({
           </div>
         </div>
         <div className="customise-actions">
+          <a
+            className="button button-small support-link"
+            href="https://buymeacoffee.com/wholegrainstudios"
+            target="_blank"
+            rel="noreferrer"
+          >
+            <span className="button-label">
+              <svg className="support-icon" viewBox="0 0 48 48" aria-hidden="true" focusable="false">
+                <path d="M11 14h24v13.5C35 35.5 30 40 23 40s-12-4.5-12-12.5V14Zm24 4h3c4 0 7 3 7 7s-3 7-7 7h-3v-5h3c1.3 0 2-0.8 2-2s-0.7-2-2-2h-3v-5ZM9 10c0-1.1 0.9-2 2-2h24c1.1 0 2 0.9 2 2s-0.9 2-2 2H11c-1.1 0-2-0.9-2-2Z" />
+              </svg>
+              <span>Buy me a coffee</span>
+            </span>
+          </a>
           <MenuButton variant="small" onClick={onClose}>
             OK
           </MenuButton>

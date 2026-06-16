@@ -337,6 +337,25 @@ h1 {
   font-size: 0.9rem;
 }
 
+.support-link {
+  width: auto;
+  min-width: 11.6rem;
+  text-decoration: none;
+}
+
+.support-link::before,
+.support-link::after {
+  display: none;
+}
+
+.support-icon {
+  width: 1.35rem;
+  height: 1.35rem;
+  flex: 0 0 auto;
+  fill: #fff9dc;
+  filter: drop-shadow(0 2px 0 #120b07);
+}
+
 .menu-screen > .back-button {
   position: fixed;
   left: var(--space-4);
@@ -1893,7 +1912,8 @@ h1 {
 }
 
 .options-dialog .customise-actions {
-  justify-content: flex-end;
+  justify-content: space-between;
+  align-items: center;
 }
 
 .rules-list {
