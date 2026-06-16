@@ -1316,6 +1316,17 @@ h1 {
   cursor: pointer;
 }
 
+.account-inline-prompt {
+  margin: 0;
+  color: #5a3218;
+  font-weight: 900;
+  text-align: center;
+}
+
+.account-inline-prompt .text-link {
+  padding: 0;
+}
+
 .friends-list {
   min-height: 12rem;
   display: grid;

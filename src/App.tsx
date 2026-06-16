@@ -23,12 +23,14 @@ import {
   fetchProfile,
   getLocalClientId,
   linkRemoteAccount,
+  readCachedProfile,
   removeFriend,
   searchPlayers,
   setRemoteUsername,
   syncRemoteProfile,
   type PlayerProfile,
-  type PlayerSummary
+  type PlayerSummary,
+  writeCachedProfile
 } from "./services/profile";
 
 type Screen = "main" | "bet" | "multiplayer" | "host" | "join" | "game";
@@ -51,7 +53,7 @@ type MultiplayerConnectStatus = "idle" | "connecting" | "failed";
 type AccountDialogMode = "signup" | "login" | null;
 type InviteNotice = "in-game" | "full" | "sent" | null;
 
-const appVersion = "0.9.1";
+const appVersion = "0.9.2";
 const multiplayerRetryMs = 5_000;
 const multiplayerUnavailableMs = 120_000;
 const rollBaseDuration = 1.3;
@@ -221,7 +223,19 @@ function OptionsDialog({
   );
 }
 
-function UsernameDialog({ current, error, onSubmit, onClose }: { current: string; error: string; onSubmit: (username: string) => void; onClose: () => void }) {
+function UsernameDialog({
+  current,
+  error,
+  onSubmit,
+  onLogin,
+  onClose
+}: {
+  current: string;
+  error: string;
+  onSubmit: (username: string) => void;
+  onLogin: () => void;
+  onClose: () => void;
+}) {
   const [username, setUsername] = useState(current);
   const validation = validateUsername(username);
   return (
@@ -237,6 +251,14 @@ function UsernameDialog({ current, error, onSubmit, onClose }: { current: string
           <MenuButton variant="small" onClick={onClose}>Cancel</MenuButton>
           <MenuButton variant="small" disabled={Boolean(validation)} onClick={() => onSubmit(username.trim())}>OK</MenuButton>
         </div>
+        {!current && (
+          <p className="account-inline-prompt">
+            Already have an account?{" "}
+            <button className="text-link" type="button" onClick={onLogin}>
+              Log in.
+            </button>
+          </p>
+        )}
       </section>
     </div>
   );
@@ -425,7 +447,7 @@ export function App() {
   const [accountError, setAccountError] = useState("");
   const [accountNotice, setAccountNotice] = useState<string | null>(null);
   const [session, setSession] = useState<IdentitySession | null>(() => readIdentitySession());
-  const [profile, setProfile] = useState<PlayerProfile | null>(null);
+  const [profile, setProfile] = useState<PlayerProfile | null>(() => readCachedProfile());
   const [friendsOpen, setFriendsOpen] = useState(false);
   const [friends, setFriends] = useState<PlayerSummary[]>([]);
   const [recents, setRecents] = useState<PlayerSummary[]>([]);
@@ -513,10 +535,31 @@ export function App() {
   }, []);
 
   useEffect(() => {
+    const cached = readCachedProfile();
+    if (cached) {
+      setProfile(cached);
+      setOptions((current) => ({ ...current, username: cached.username }));
+      setGold(cached.gold);
+      if (cached.customization) {
+        setCustomizationInventory(cached.customization);
+        writeCustomizationInventory(cached.customization);
+      }
+    }
     fetchProfile()
       .then((remote) => {
-        if (!remote) return;
+        if (!remote) {
+          if (!cached && options.username.trim()) {
+            setRemoteUsername(options.username.trim(), gold, customizationInventory)
+              .then((restored) => {
+                setProfile(restored);
+                writeCachedProfile(restored);
+              })
+              .catch(() => undefined);
+          }
+          return;
+        }
         setProfile(remote);
+        writeCachedProfile(remote);
         setOptions((current) => ({ ...current, username: remote.username }));
         setGold(remote.gold);
         if (remote.customization) {
@@ -1553,7 +1596,21 @@ export function App() {
           onClose={() => setOptionsOpen(false)}
         />
       )}
-      {usernameOpen && <UsernameDialog current={profile?.username ?? ""} error={usernameError} onSubmit={saveUsername} onClose={() => setUsernameOpen(false)} />}
+      {usernameOpen && (
+        <UsernameDialog
+          current={profile?.username ?? ""}
+          error={usernameError}
+          onSubmit={saveUsername}
+          onLogin={() => {
+            setUsernameOpen(false);
+            setUsernameError("");
+            setAccountError("");
+            setAccountNotice(null);
+            setAccountDialogMode("login");
+          }}
+          onClose={() => setUsernameOpen(false)}
+        />
+      )}
       {accountPromptOpen && (
         <Dialog
           title="Would you like to create an account? This allows cross-platform play."

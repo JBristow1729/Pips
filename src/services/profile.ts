@@ -18,6 +18,7 @@ export type PlayerSummary = {
 };
 
 const localClientIdKey = "pips-client-id";
+const localProfileKey = "pips-profile";
 
 export function getLocalClientId() {
   const current = localStorage.getItem(localClientIdKey);
@@ -33,7 +34,25 @@ export function setLocalClientId(id: string) {
 
 export async function fetchProfile() {
   const body = await requestProfile<{ profile: PlayerProfile | null }>("/.netlify/functions/pips-profile?action=profile");
+  if (body.profile) writeCachedProfile(body.profile);
   return body.profile;
+}
+
+export function readCachedProfile(): PlayerProfile | null {
+  try {
+    const raw = localStorage.getItem(localProfileKey);
+    return raw ? (JSON.parse(raw) as PlayerProfile) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function writeCachedProfile(profile: PlayerProfile | null) {
+  if (!profile) {
+    localStorage.removeItem(localProfileKey);
+    return;
+  }
+  localStorage.setItem(localProfileKey, JSON.stringify(profile));
 }
 
 export async function setRemoteUsername(username: string, gold: number, customization: DiceCustomizationInventory) {
@@ -41,6 +60,7 @@ export async function setRemoteUsername(username: string, gold: number, customiz
     method: "POST",
     body: JSON.stringify({ username, gold, customization })
   });
+  writeCachedProfile(body.profile);
   return body.profile;
 }
 
@@ -49,6 +69,7 @@ export async function syncRemoteProfile(gold: number, customization: DiceCustomi
     method: "PATCH",
     body: JSON.stringify({ gold, customization })
   });
+  writeCachedProfile(body.profile);
   return body.profile;
 }
 
@@ -58,6 +79,7 @@ export async function linkRemoteAccount(localId: string) {
     body: JSON.stringify({ localId })
   });
   setLocalClientId(body.profile.id);
+  writeCachedProfile(body.profile);
   return body.profile;
 }
 
