@@ -24,6 +24,7 @@ import {
   readCachedProfile,
   removeFriend,
   requestFriend,
+  restoreWholegrainProfile,
   searchPlayers,
   setRemoteUsername,
   syncRemoteProfile,
@@ -493,6 +494,7 @@ export function App() {
   const [usernameError, setUsernameError] = useState("");
   const [accountPromptOpen, setAccountPromptOpen] = useState(false);
   const [profile, setProfile] = useState<PlayerProfile | null>(() => readCachedProfile());
+  const [profileRestorePending, setProfileRestorePending] = useState(() => new URL(window.location.href).searchParams.has("pipsRestoreToken"));
   const [friendsOpen, setFriendsOpen] = useState(false);
   const [friends, setFriends] = useState<PlayerSummary[]>([]);
   const [recents, setRecents] = useState<PlayerSummary[]>([]);
@@ -587,6 +589,9 @@ export function App() {
   }, []);
 
   useEffect(() => {
+    const restored = restoreProfileFromUrl();
+    if (restored) return;
+
     const cached = readCachedProfile();
     if (cached) {
       setProfile(cached);
@@ -627,7 +632,7 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    if (!profile) return;
+    if (!profile || profileRestorePending) return;
     if (remoteSyncTimerRef.current !== null) window.clearTimeout(remoteSyncTimerRef.current);
     remoteSyncTimerRef.current = window.setTimeout(() => {
       syncRemoteProfile(gold, customizationInventory)
@@ -639,7 +644,7 @@ export function App() {
           }
         });
     }, 800);
-  }, [profile?.id, gold, customizationInventory]);
+  }, [profile?.id, gold, customizationInventory, profileRestorePending]);
 
   useEffect(() => {
     if (!profile || !friendsOpen) return;
@@ -813,6 +818,36 @@ export function App() {
     url.searchParams.set("returnTo", window.location.href);
     window.location.href = url.toString();
   };
+
+  function restoreProfileFromUrl() {
+    const url = new URL(window.location.href);
+    const restoreToken = url.searchParams.get("pipsRestoreToken");
+    if (!restoreToken) return false;
+    url.searchParams.delete("pipsRestoreToken");
+    window.history.replaceState({}, document.title, `${url.pathname}${url.search}${url.hash}`);
+    restoreWholegrainProfile(restoreToken)
+      .then((restoredProfile) => {
+        setProfile(restoredProfile);
+        setGold(restoredProfile.gold);
+        setOptions((current) => {
+          const next = { ...current, username: restoredProfile.username };
+          writeOptions(next);
+          return next;
+        });
+        if (restoredProfile.customization) {
+          setCustomizationInventory(restoredProfile.customization);
+          writeCustomizationInventory(restoredProfile.customization);
+        }
+        setFriends([]);
+        setRecents([]);
+        setFriendRequests([]);
+        setSearchResults([]);
+        setProfileStatuses({});
+      })
+      .catch(() => fetchProfile().then((remote) => remote && setProfile(remote)).catch(() => undefined))
+      .finally(() => setProfileRestorePending(false));
+    return true;
+  }
 
   const requireProfileForMultiplayer = () => {
     if (profile) return true;

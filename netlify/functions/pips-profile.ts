@@ -1,4 +1,5 @@
 import type { Handler, HandlerEvent } from "@netlify/functions";
+import { createHmac, timingSafeEqual } from "node:crypto";
 import { Pool } from "pg";
 
 type DiceCustomizationInventory = {
@@ -18,6 +19,7 @@ type Profile = {
 let pool: Pool | null = null;
 
 const usernameMaxLength = 12;
+const restoreTokenMaxAgeSeconds = 60 * 5;
 
 const handler: Handler = async (event) => {
   if (event.httpMethod === "OPTIONS") return json({});
@@ -33,6 +35,15 @@ const handler: Handler = async (event) => {
       const body = parseBody<{ identityId?: string; gameAccountId?: string }>(event);
       if (!body.identityId || !body.gameAccountId) return json({ error: "Wholegrain identity id and Pips account id are required." }, 400);
       const profile = await linkWholegrainAccount(body.identityId, body.gameAccountId);
+      return json({ profile, restoreToken: createRestoreToken(profile.id) });
+    }
+
+    if (event.httpMethod === "POST" && action === "restore-wholegrain-profile") {
+      const body = parseBody<{ restoreToken?: string }>(event);
+      if (!body.restoreToken) return json({ error: "Restore token is required." }, 400);
+      const profileId = verifyRestoreToken(body.restoreToken);
+      const profile = await getProfileByActor([profileId], null);
+      if (!profile?.identityId) return json({ error: "That restore token does not match a linked profile." }, 401);
       return json({ profile });
     }
 
@@ -201,8 +212,9 @@ async function updateProfile(actorIds: string[], identityId: string | null, gold
 async function linkWholegrainAccount(identityId: string, gameAccountId: string): Promise<Profile> {
   const db = getPool();
   const existingAccount = await getProfileByActor([], identityId);
-  if (existingAccount && existingAccount.id !== gameAccountId) {
-    throw new Error("That Wholegrain account is already linked to a different Pips profile.");
+  if (existingAccount) {
+    if (existingAccount.id !== gameAccountId) await deleteUnlinkedProfile(gameAccountId);
+    return existingAccount;
   }
   const { rows } = await db.query(
     "UPDATE pips_profiles SET identity_id = $1, updated_at = NOW() WHERE id = $2 AND (identity_id IS NULL OR identity_id = $1) RETURNING *",
@@ -210,6 +222,11 @@ async function linkWholegrainAccount(identityId: string, gameAccountId: string):
   );
   if (rows[0]) return toProfile(rows[0]);
   throw new Error("No unlinked Pips profile exists for that account id.");
+}
+
+async function deleteUnlinkedProfile(profileId: string) {
+  const db = getPool();
+  await db.query("DELETE FROM pips_profiles WHERE id = $1 AND identity_id IS NULL", [profileId]);
 }
 
 async function listFriends(profileId: string) {
@@ -399,6 +416,44 @@ function requireWholegrainLinkSecret(event: HandlerEvent) {
   if (!expected) throw new Error("WHOLEGRAIN_LINK_SECRET is not configured.");
   const provided = event.headers["x-wholegrain-link-secret"] ?? event.headers["X-Wholegrain-Link-Secret"];
   if (provided !== expected) throw new Error("Not authorized to link this Pips profile.");
+}
+
+function createRestoreToken(profileId: string) {
+  const exp = Math.floor(Date.now() / 1000) + restoreTokenMaxAgeSeconds;
+  const payload = encodeBase64Url(JSON.stringify({ profileId, exp }));
+  const signature = signRestorePayload(payload);
+  return `${payload}.${signature}`;
+}
+
+function verifyRestoreToken(token: string) {
+  const [payload, signature] = token.split(".");
+  if (!payload || !signature) throw new Error("Invalid restore token.");
+  const expected = signRestorePayload(payload);
+  if (!safeEqual(signature, expected)) throw new Error("Invalid restore token.");
+  const parsed = JSON.parse(decodeBase64Url(payload)) as { profileId?: unknown; exp?: unknown };
+  if (typeof parsed.profileId !== "string" || typeof parsed.exp !== "number") throw new Error("Invalid restore token.");
+  if (parsed.exp < Math.floor(Date.now() / 1000)) throw new Error("Restore token expired.");
+  return parsed.profileId;
+}
+
+function signRestorePayload(payload: string) {
+  const secret = process.env.WHOLEGRAIN_LINK_SECRET;
+  if (!secret) throw new Error("WHOLEGRAIN_LINK_SECRET is not configured.");
+  return createHmac("sha256", secret).update(payload).digest("base64url");
+}
+
+function safeEqual(left: string, right: string) {
+  const leftBuffer = Buffer.from(left);
+  const rightBuffer = Buffer.from(right);
+  return leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer);
+}
+
+function encodeBase64Url(value: string) {
+  return Buffer.from(value).toString("base64url");
+}
+
+function decodeBase64Url(value: string) {
+  return Buffer.from(value, "base64url").toString("utf8");
 }
 
 function toProfile(row: Record<string, unknown>): Profile {

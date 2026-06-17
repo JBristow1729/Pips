@@ -89,6 +89,15 @@ export async function syncRemoteProfile(gold: number, customization: DiceCustomi
   return body.profile;
 }
 
+export async function restoreWholegrainProfile(restoreToken: string) {
+  const body = await requestProfile<{ profile: PlayerProfile }>("/.netlify/functions/pips-profile?action=restore-wholegrain-profile", {
+    method: "POST",
+    body: JSON.stringify({ restoreToken })
+  });
+  writeCachedProfile(body.profile);
+  return body.profile;
+}
+
 export async function fetchFriendsAndRecents() {
   return requestProfile<{ friends: PlayerSummary[]; recents: PlayerSummary[]; requests: PlayerSummary[] }>("/.netlify/functions/pips-profile?action=friends");
 }

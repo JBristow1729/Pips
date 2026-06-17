@@ -93,7 +93,24 @@ x-wholegrain-link-secret: <WHOLEGRAIN_LINK_SECRET>
 }
 ```
 
-   - On success, redirect the player back to `returnTo`.
+   - The response returns:
+
+```json
+{
+  "profile": { "id": "<authoritative linked Pips profile id>" },
+  "restoreToken": "<short-lived signed token>"
+}
+```
+
+   - If the Wholegrain account is already linked to a different Pips profile, that linked profile wins and the current unlinked local profile is deleted.
+   - On success, redirect the player back to `returnTo` with the restore token:
+
+```text
+<returnTo>?pipsRestoreToken=<restoreToken>
+```
+
+   - If `returnTo` already contains query parameters, append `pipsRestoreToken` with `&`.
+   - Pips consumes that token, downloads the linked profile, and overwrites any current local/unlinked browser profile.
    - For production, replace the raw `gameAccountId` URL handoff with a short-lived signed link token minted by Pips.
 
 6. Enable Netlify Database for Pips:
@@ -121,6 +138,7 @@ Production and deploy-preview migrations are applied by Netlify during deploy wh
    - `netlify/functions/pips-profile.ts` uses `NETLIFY_DB_URL` from Netlify Database.
    - Browser requests identify the player with a local Pips client/profile id.
    - The central Wholegrain Accounts service links `identity_id` through the protected `link-wholegrain-account` action.
+   - `link-wholegrain-account` returns an authoritative profile and restore token. The Pips browser consumes that token through `restore-wholegrain-profile`.
    - Pips account dialogs only redirect to Wholegrain Accounts; they do not collect email or password.
 
 9. Local development:
