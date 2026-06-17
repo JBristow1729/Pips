@@ -102,7 +102,11 @@ x-wholegrain-link-secret: <WHOLEGRAIN_LINK_SECRET>
 }
 ```
 
-   - If the Wholegrain account is already linked to a different Pips profile, that linked profile wins and the current unlinked local profile is deleted.
+   - If the Wholegrain account is already linked to a different Pips profile, Pips returns a `409` `LINK_CHOICE_REQUIRED` response with the existing and local usernames.
+   - Wholegrain asks the player whether to use the existing linked profile or overwrite it with the local profile.
+   - Wholegrain calls Pips again with `linkChoice=useLinked` or `linkChoice=useLocal` plus the short-lived `conflictToken` from the `409` response.
+   - `useLinked` keeps the existing linked profile and deletes the current unlinked local profile.
+   - `useLocal` links the current local profile and deletes the previously linked profile.
    - On success, redirect the player back to `returnTo` with the restore token:
 
 ```text

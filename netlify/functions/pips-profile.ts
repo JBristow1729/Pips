@@ -7,6 +7,8 @@ type DiceCustomizationInventory = {
   owned: unknown;
 };
 
+type LinkChoice = "useLinked" | "useLocal";
+
 type Profile = {
   id: string;
   identityId: string | null;
@@ -20,6 +22,7 @@ let pool: Pool | null = null;
 
 const usernameMaxLength = 12;
 const restoreTokenMaxAgeSeconds = 60 * 5;
+const linkConflictTokenMaxAgeSeconds = 60 * 5;
 
 const handler: Handler = async (event) => {
   if (event.httpMethod === "OPTIONS") return json({});
@@ -32,9 +35,9 @@ const handler: Handler = async (event) => {
 
     if (event.httpMethod === "POST" && action === "link-wholegrain-account") {
       requireWholegrainLinkSecret(event);
-      const body = parseBody<{ identityId?: string; gameAccountId?: string }>(event);
+      const body = parseBody<{ identityId?: string; gameAccountId?: string; linkChoice?: LinkChoice; conflictToken?: string }>(event);
       if (!body.identityId || !body.gameAccountId) return json({ error: "Wholegrain identity id and Pips account id are required." }, 400);
-      const profile = await linkWholegrainAccount(body.identityId, body.gameAccountId);
+      const profile = await linkWholegrainAccount(body.identityId, body.gameAccountId, body.linkChoice, body.conflictToken);
       return json({ profile, restoreToken: createRestoreToken(profile.id) });
     }
 
@@ -125,6 +128,8 @@ const handler: Handler = async (event) => {
 
     return json({ error: "Not found." }, 404);
   } catch (error) {
+    const handled = error as Error & { statusCode?: number; responseBody?: unknown };
+    if (handled.statusCode && handled.responseBody) return json(handled.responseBody, handled.statusCode);
     const message = error instanceof Error ? error.message : "Unexpected profile service error.";
     return json({ error: message }, 500);
   }
@@ -209,13 +214,32 @@ async function updateProfile(actorIds: string[], identityId: string | null, gold
   return toProfile(rows[0]);
 }
 
-async function linkWholegrainAccount(identityId: string, gameAccountId: string): Promise<Profile> {
+async function linkWholegrainAccount(identityId: string, gameAccountId: string, linkChoice?: LinkChoice, conflictToken?: string): Promise<Profile> {
+  if (linkChoice && !isLinkChoice(linkChoice)) throw new Error("Invalid Wholegrain account link choice.");
+
   const db = getPool();
   const existingAccount = await getProfileByActor([], identityId);
   if (existingAccount) {
-    if (existingAccount.id !== gameAccountId) await deleteUnlinkedProfile(gameAccountId);
-    return existingAccount;
+    if (existingAccount.id === gameAccountId) return existingAccount;
+
+    const localProfile = await getProfileByActor([gameAccountId], null);
+    if (!localProfile) return existingAccount;
+    if (localProfile.identityId && localProfile.identityId !== identityId) throw new Error("That Pips profile is already linked to another Wholegrain account.");
+
+    if (!linkChoice) throw createLinkChoiceRequired(existingAccount, localProfile);
+    verifyLinkConflictToken(conflictToken ?? "", identityId, existingAccount.id, localProfile.id);
+
+    if (linkChoice === "useLinked") {
+      await deleteProfile(localProfile.id);
+      return existingAccount;
+    }
+
+    await replaceLinkedProfile(identityId, existingAccount.id, localProfile.id);
+    const linkedLocal = await getProfileByActor([localProfile.id], identityId);
+    if (!linkedLocal) throw new Error("Unable to link the selected Pips profile.");
+    return linkedLocal;
   }
+
   const { rows } = await db.query(
     "UPDATE pips_profiles SET identity_id = $1, updated_at = NOW() WHERE id = $2 AND (identity_id IS NULL OR identity_id = $1) RETURNING *",
     [identityId, gameAccountId]
@@ -224,9 +248,26 @@ async function linkWholegrainAccount(identityId: string, gameAccountId: string):
   throw new Error("No unlinked Pips profile exists for that account id.");
 }
 
-async function deleteUnlinkedProfile(profileId: string) {
+async function replaceLinkedProfile(identityId: string, existingProfileId: string, localProfileId: string) {
   const db = getPool();
-  await db.query("DELETE FROM pips_profiles WHERE id = $1 AND identity_id IS NULL", [profileId]);
+  const client = await db.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("UPDATE pips_profiles SET identity_id = NULL, updated_at = NOW() WHERE id = $1 AND identity_id = $2", [existingProfileId, identityId]);
+    await client.query("UPDATE pips_profiles SET identity_id = $1, updated_at = NOW() WHERE id = $2 AND identity_id IS NULL", [identityId, localProfileId]);
+    await client.query("DELETE FROM pips_profiles WHERE id = $1 AND identity_id IS NULL", [existingProfileId]);
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+async function deleteProfile(profileId: string) {
+  const db = getPool();
+  await db.query("DELETE FROM pips_profiles WHERE id = $1", [profileId]);
 }
 
 async function listFriends(profileId: string) {
@@ -418,6 +459,41 @@ function requireWholegrainLinkSecret(event: HandlerEvent) {
   if (provided !== expected) throw new Error("Not authorized to link this Pips profile.");
 }
 
+function createLinkChoiceRequired(existingProfile: Profile, localProfile: Profile) {
+  const error = new Error("Choose which Pips profile to keep.") as Error & { statusCode?: number; responseBody?: unknown };
+  error.statusCode = 409;
+  error.responseBody = {
+    code: "LINK_CHOICE_REQUIRED",
+    requiresChoice: true,
+    existingUsername: existingProfile.username,
+    localUsername: localProfile.username,
+    conflictToken: createLinkConflictToken(existingProfile.identityId ?? "", existingProfile.id, localProfile.id)
+  };
+  return error;
+}
+
+function isLinkChoice(value: unknown): value is LinkChoice {
+  return value === "useLinked" || value === "useLocal";
+}
+
+function createLinkConflictToken(identityId: string, existingProfileId: string, localProfileId: string) {
+  const exp = Math.floor(Date.now() / 1000) + linkConflictTokenMaxAgeSeconds;
+  const payload = encodeBase64Url(JSON.stringify({ identityId, existingProfileId, localProfileId, exp }));
+  const signature = signRestorePayload(payload);
+  return `${payload}.${signature}`;
+}
+
+function verifyLinkConflictToken(token: string, identityId: string, existingProfileId: string, localProfileId: string) {
+  const [payload, signature] = token.split(".");
+  if (!payload || !signature) throw new Error("Invalid account link choice token.");
+  const expected = signRestorePayload(payload);
+  if (!safeEqual(signature, expected)) throw new Error("Invalid account link choice token.");
+  const parsed = JSON.parse(decodeBase64Url(payload)) as { identityId?: unknown; existingProfileId?: unknown; localProfileId?: unknown; exp?: unknown };
+  if (parsed.identityId !== identityId || parsed.existingProfileId !== existingProfileId || parsed.localProfileId !== localProfileId || typeof parsed.exp !== "number") {
+    throw new Error("Invalid account link choice token.");
+  }
+  if (parsed.exp < Math.floor(Date.now() / 1000)) throw new Error("Account link choice token expired.");
+}
 function createRestoreToken(profileId: string) {
   const exp = Math.floor(Date.now() / 1000) + restoreTokenMaxAgeSeconds;
   const payload = encodeBase64Url(JSON.stringify({ profileId, exp }));
