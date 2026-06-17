@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent } from "react";
 import { Dice } from "./components/Dice";
 import { CustomiseDialog } from "./components/CustomiseDialog";
 import { Dialog } from "./components/Dialog";
@@ -53,7 +53,7 @@ type MultiplayerConnectStatus = "idle" | "connecting" | "failed";
 type InviteNotice = "offline" | "in-game" | "full" | "sent" | { type: "rejected"; username: string } | null;
 type ProfileStatus = { online: boolean; inGame: boolean };
 
-const appVersion = "0.9.7";
+const appVersion = "1.0.0";
 const wholegrainAccountsUrl = import.meta.env.VITE_WHOLEGRAIN_ACCOUNTS_URL ?? "https://wholegrainstudios.co.uk/accounts/link";
 const multiplayerRetryMs = 5_000;
 const multiplayerUnavailableMs = 120_000;
@@ -62,6 +62,14 @@ const rollStartStagger = 0.1;
 const rollStopStagger = 0.1;
 const cheatClickCount = 10;
 const cheatClickWindowMs = 5_000;
+const usernameFitBaseLength = 12;
+const usernameFitMinScale = 0.75;
+
+function fittedTextStyle(value: string, baseLength = usernameFitBaseLength, minScale = usernameFitMinScale): CSSProperties {
+  const visibleLength = value.trim().length;
+  const scale = visibleLength > baseLength ? Math.max(minScale, baseLength / visibleLength) : 1;
+  return { "--text-fit-scale": scale } as CSSProperties;
+}
 
 const foundPhrases = [
   "On the tavern floor!",
@@ -254,7 +262,7 @@ function OptionsDialog({
           </label>
           <div className="option-field option-profile">
             <span>Username</span>
-            <strong>{profile ? `${profile.username} #${profile.hash}` : "Not set"}</strong>
+            <strong className="text-fit" style={fittedTextStyle(profile ? `${profile.username} #${profile.hash}` : "Not set")}>{profile ? `${profile.username} #${profile.hash}` : "Not set"}</strong>
             <MenuButton variant="small" onClick={onSetUsername}>{profile ? "Change Username" : "Set Username"}</MenuButton>
           </div>
           <div className="option-account-actions">
@@ -379,7 +387,7 @@ function FriendsDialog({
       <section className="friends-dialog" role="dialog" aria-modal="true" aria-labelledby="friends-title" onMouseDown={(event) => event.stopPropagation()}>
         <div className="customise-heading">
           <h2 id="friends-title" className="profile-dialog-title">
-            <span>{profile?.username ?? "Profile"}</span>
+            <span className="text-fit" style={fittedTextStyle(profile?.username ?? "Profile")}>{profile?.username ?? "Profile"}</span>
             {profile?.hash && <small>#{profile.hash}</small>}
           </h2>
         </div>
@@ -420,7 +428,7 @@ function FriendsDialog({
                 <article className="friend-card" key={player.id}>
                   {tab === "friends" && <button className="friend-remove" aria-label={`Remove ${player.username}`} onClick={() => onRemoveFriend(player)}>x</button>}
                   <div className="friend-card-copy">
-                    <strong>{player.username} <span>#{player.hash}</span></strong>
+                    <strong className="text-fit" style={fittedTextStyle(`${player.username} #${player.hash}`)}>{player.username} <span>#{player.hash}</span></strong>
                     {isFriend && <small className={online ? "friend-online" : ""}>{online ? "Online" : "Offline"}</small>}
                   </div>
                   {tab === "requests" ? (
@@ -1447,7 +1455,7 @@ export function App() {
                   }
                   return (
                     <div className={`lobby-player-card ${player?.ready ? "ready" : ""}`} key={slot}>
-                      <strong>{`${player.username}${player.hash ? ` #${player.hash}` : ""}`}</strong>
+                      <strong className="text-fit" style={fittedTextStyle(`${player.username}${player.hash ? ` #${player.hash}` : ""}`)}>{`${player.username}${player.hash ? ` #${player.hash}` : ""}`}</strong>
                       <span>{`${player.isHost ? "Host - " : ""}${player.ready ? "Ready" : "Not Ready"}`}</span>
                     </div>
                   );
@@ -1549,7 +1557,7 @@ export function App() {
                   {publicLobbies.length === 0 && <p className="empty-lobbies">No public games are waiting.</p>}
                   {publicLobbies.map((publicLobby) => (
                     <article className="public-lobby-card" key={publicLobby.id}>
-                      <strong className="public-lobby-host">{publicLobby.host}</strong>
+                      <strong className="public-lobby-host text-fit" style={fittedTextStyle(publicLobby.host)}>{publicLobby.host}</strong>
                       <div className="public-lobby-meta">
                         <span>{publicLobby.bet}g</span>
                         <span>Goal {publicLobby.goal}</span>
@@ -1592,7 +1600,7 @@ export function App() {
             <section className="table-panel">
               <div className="table-status">
                 <div className="goal-board">Goal: {game.goal}</div>
-                <div className={`center-message ${game.phase === "gameOver" ? "winner" : ""}`} role="status" aria-live="polite">
+                <div className={`center-message ${game.phase === "gameOver" ? "winner" : ""}`} style={fittedTextStyle(game.message, 20, 0.68)} role="status" aria-live="polite">
                   {game.message}
                 </div>
                 {game.mode === "multiplayer" && turnTimer && game.phase !== "gameOver" && (
@@ -1700,7 +1708,7 @@ export function App() {
             <path d="M10 40c1.4-9.2 6.4-14 14-14s12.6 4.8 14 14H10Z" />
           </svg>
           <span className="profile-toggle-text">
-            <span>{profile?.username ?? "Profile"}</span>
+            <span className="text-fit" style={fittedTextStyle(profile?.username ?? "Profile")}>{profile?.username ?? "Profile"}</span>
             <strong>{profile ? `#${profile.hash}` : "Set name"}</strong>
           </span>
           {friendRequests.length > 0 && <span className="profile-badge">{friendRequests.length}</span>}

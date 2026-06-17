@@ -177,6 +177,15 @@ h1 {
   text-shadow: 0 5px 0 #000, 0 0 30px rgba(242, 204, 98, 0.24);
 }
 
+.text-fit {
+  display: inline-block;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .pips-title {
   cursor: default;
   user-select: none;
@@ -496,7 +505,7 @@ h1 {
   max-width: 8.5rem;
   overflow: hidden;
   color: var(--color-cream);
-  font-size: 0.92rem;
+  font-size: calc(0.92rem * var(--text-fit-scale, 1));
   font-weight: 900;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -508,7 +517,7 @@ h1 {
   max-width: 8.5rem;
   overflow: hidden;
   color: rgba(255, 248, 234, 0.72);
-  font-size: clamp(1.05rem, 0.95rem + 0.45vw, 1.35rem);
+  font-size: calc(clamp(1.05rem, 0.95rem + 0.45vw, 1.35rem) * var(--text-fit-scale, 1));
   font-weight: 900;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -779,7 +788,7 @@ h1 {
   min-width: 0;
   flex: 1 1 auto;
   margin: 0;
-  font-size: clamp(1.45rem, 1.08rem + 1.1vw, 2.25rem);
+  font-size: calc(clamp(1.45rem, 1.08rem + 1.1vw, 2.25rem) * var(--text-fit-scale, 1));
   line-height: 1;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -916,10 +925,12 @@ h1 {
   padding: 0.4rem 0.85rem;
   color: var(--color-cream);
   font-family: var(--font-heading);
-  font-size: clamp(1.65rem, 3.4vw, 3.4rem);
+  font-size: calc(clamp(1.65rem, 3.4vw, 3.4rem) * var(--text-fit-scale, 1));
   line-height: 1;
   text-align: center;
   text-shadow: 0 4px 0 #000, 0 0 20px rgba(242, 204, 98, 0.24);
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -1360,6 +1371,8 @@ h1 {
 
 .profile-dialog-title span {
   color: var(--color-ink);
+  font-size: calc(clamp(1.8rem, 1.4rem + 1.2vw, 2.7rem) * var(--text-fit-scale, 1));
+  line-height: 1;
 }
 
 .profile-dialog-title small {
@@ -1381,6 +1394,10 @@ h1 {
 .option-profile > span,
 .option-profile > strong {
   grid-column: 1;
+}
+
+.option-profile > strong {
+  font-size: calc(1rem * var(--text-fit-scale, 1));
 }
 
 .option-profile .button {
@@ -1499,6 +1516,10 @@ h1 {
   min-width: 0;
   display: grid;
   gap: 0.16rem;
+}
+
+.friend-card-copy strong {
+  font-size: calc(1rem * var(--text-fit-scale, 1));
 }
 
 .friend-card-copy small {
@@ -1678,6 +1699,11 @@ h1 {
   font-weight: 800;
 }
 
+.lobby-player-card strong {
+  min-width: 0;
+  font-size: calc(1rem * var(--text-fit-scale, 1));
+}
+
 .lobby-config.locked {
   opacity: 0.72;
 }
@@ -1816,9 +1842,9 @@ h1 {
   justify-self: start;
   align-self: start;
   min-width: 0;
-  font-size: clamp(1.25rem, 1rem + 0.8vw, 1.75rem);
+  font-size: calc(clamp(1.25rem, 1rem + 0.8vw, 1.75rem) * var(--text-fit-scale, 1));
   line-height: 1.05;
-  overflow-wrap: anywhere;
+  overflow-wrap: normal;
 }
 
 .public-lobby-meta {
@@ -2400,7 +2426,7 @@ h1 {
   }
 
   .scoreboard h2 {
-    font-size: 1.35rem;
+    font-size: calc(1.35rem * var(--text-fit-scale, 1));
   }
 
   .score-lines {
@@ -2593,7 +2619,7 @@ h1 {
   }
 
   .menu-lobby .lobby-player-card strong {
-    font-size: 0.95rem;
+    font-size: calc(0.95rem * var(--text-fit-scale, 1));
     line-height: 1.1;
   }
 

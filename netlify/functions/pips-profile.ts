@@ -20,7 +20,7 @@ type Profile = {
 
 let pool: Pool | null = null;
 
-const usernameMaxLength = 12;
+const usernameMaxLength = 16;
 const restoreTokenMaxAgeSeconds = 60 * 5;
 const linkConflictTokenMaxAgeSeconds = 60 * 5;
 

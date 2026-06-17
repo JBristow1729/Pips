@@ -5,7 +5,7 @@ export type PlayerOptions = {
 };
 
 const storageKey = "pips-options";
-export const usernameMaxLength = 12;
+export const usernameMaxLength = 16;
 const blockedWords = [
   "arse",
   "asshole",
