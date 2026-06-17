@@ -1752,7 +1752,7 @@ export function App() {
       )}
       {accountPromptOpen && (
         <Dialog
-          title="Would you like to link an account? This allows cross-platform play."
+          title="Would you like to link your profile to a Wholegrain account? This allows you to preserve your progress and play anywhere!"
           onYes={() => {
             setAccountPromptOpen(false);
             openWholegrainAccountLink();
