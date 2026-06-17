@@ -18,28 +18,39 @@ export type PlayerSummary = {
 
 const localClientIdKey = "pips-client-id";
 const localProfileKey = "pips-profile";
+const localClientCookieName = "pips_client_id";
+const localClientIdMaxAgeSeconds = 60 * 60 * 24 * 730;
 
 export function getLocalClientId() {
-  const current = localStorage.getItem(localClientIdKey);
-  if (current) return current;
   const cached = readCachedProfile();
-  if (cached?.id.startsWith("local-")) {
-    localStorage.setItem(localClientIdKey, cached.id);
+  if (cached?.id) {
+    setLocalClientId(cached.id);
     return cached.id;
   }
+  const current = localStorage.getItem(localClientIdKey);
+  if (current) {
+    writeLocalClientCookie(current);
+    return current;
+  }
+  const cookieId = readLocalClientCookie();
+  if (cookieId) {
+    localStorage.setItem(localClientIdKey, cookieId);
+    return cookieId;
+  }
   const next = `local-${crypto.randomUUID()}`;
-  localStorage.setItem(localClientIdKey, next);
+  setLocalClientId(next);
   return next;
 }
 
 export function setLocalClientId(id: string) {
   localStorage.setItem(localClientIdKey, id);
+  writeLocalClientCookie(id);
 }
 
 export async function fetchProfile() {
   const body = await requestProfile<{ profile: PlayerProfile | null }>("/.netlify/functions/pips-profile?action=profile");
-  writeCachedProfile(body.profile);
-  return body.profile;
+  if (body.profile) writeCachedProfile(body.profile);
+  return body.profile ?? readCachedProfile();
 }
 
 export function readCachedProfile(): PlayerProfile | null {
@@ -57,6 +68,7 @@ export function writeCachedProfile(profile: PlayerProfile | null) {
     return;
   }
   localStorage.setItem(localProfileKey, JSON.stringify(profile));
+  setLocalClientId(profile.id);
 }
 
 export async function setRemoteUsername(username: string, gold: number, customization: DiceCustomizationInventory) {
@@ -133,4 +145,23 @@ async function requestProfile<T>(url: string, init: RequestInit = {}): Promise<T
     throw new Error(body?.error ?? "Profile service is unavailable.");
   }
   return (await response.json()) as T;
+}
+
+function readLocalClientCookie() {
+  const prefix = `${localClientCookieName}=`;
+  const value = document.cookie
+    .split(";")
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(prefix))
+    ?.slice(prefix.length);
+  if (!value) return null;
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+function writeLocalClientCookie(id: string) {
+  document.cookie = `${localClientCookieName}=${encodeURIComponent(id)}; Max-Age=${localClientIdMaxAgeSeconds}; Path=/; SameSite=Lax`;
 }
